@@ -13,16 +13,14 @@ import anthropic
 PROMPT = """You are the Springer Publishing weekly Reddit content research agent.
 
 Today is {date}. Your job is to scan and analyze recent posts and discussions from \
-r/nursepractitioner, r/FNP, r/socialwork, and r/SocialWorkStudents, then identify \
-content opportunities for blog articles, LinkedIn posts, newsletters, and short-form \
-social content.
+r/nursepractitioner, r/FNP, r/socialwork, and r/SocialWorkStudents, then produce a \
+complete weekly content mining report.
 
 Steps:
 1. Use web_search to find recent discussions, trending topics, questions, pain points, \
-and concerns in each community. Run multiple searches — search each subreddit by name, \
-and search for topics like exam prep, licensing, burnout, salary, scope of practice, \
-career transitions, and educational concerns. Aim for at least 8 searches total to \
-ensure broad coverage.
+and concerns in each community. Search each subreddit by name. Also search for topics \
+like exam prep, licensing, burnout, salary, scope of practice, career transitions, and \
+educational concerns. Run at least 8 searches to ensure broad coverage.
 2. Group findings into the 5 most important themes of the week.
 3. For each theme provide: theme title, why it matters now, evidence from the \
 communities (specific posts or discussion patterns observed), and audience fit \
@@ -35,10 +33,14 @@ Springer Publishing voice framing.
 6. End with: Top 3 blog ideas to prioritize, Top 3 social ideas to prioritize, \
 1 emerging trend to watch next week.
 
-OUTPUT FORMAT: Return the full report as a single self-contained HTML document. \
+CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and \
+nothing else. Start immediately with <html> — no preamble, no explanation, no \
+summary text before or after the HTML. Do not say what you found or describe the \
+report. Do not use markdown. Do not use code fences. Just output the HTML document \
+directly, beginning with <html> and ending with </html>.
+
 Use clean formatting with headings, tables for content ideas, and clear sections. \
-No markdown — pure HTML only. Do not include ```html code fences. \
-Start directly with <html>.
+Inline CSS for styling is encouraged.
 
 Springer Publishing voice: supportive, modern, professional, practical, credible, \
 approachable. Active voice. Plain language. No exclamation points. No buzzwords. \
@@ -49,48 +51,25 @@ and licensure journeys."""
 def run_research(date_str):
     client = anthropic.Anthropic()
 
-    messages = [{"role": "user", "content": PROMPT.format(date=date_str)}]
+    with client.messages.stream(
+        model="claude-opus-4-7",
+        max_tokens=16000,
+        tools=[{"type": "web_search_20260209", "name": "web_search"}],
+        messages=[{"role": "user", "content": PROMPT.format(date=date_str)}],
+    ) as stream:
+        message = stream.get_final_message()
 
-    while True:
-        response = client.messages.create(
-            model="claude-opus-4-7",
-            max_tokens=16000,
-            thinking={"type": "adaptive"},
-            tools=[{"type": "web_search_20260209", "name": "web_search"}],
-            messages=messages,
-        )
-
-        if response.stop_reason == "end_turn":
-            html_parts = [
-                block.text
-                for block in response.content
-                if block.type == "text"
-            ]
-            return "".join(html_parts).strip()
-
-        messages.append({"role": "assistant", "content": response.content})
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": "",
-                })
-        if tool_results:
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            html_parts = [
-                block.text
-                for block in response.content
-                if block.type == "text"
-            ]
-            return "".join(html_parts).strip()
+    html_parts = [
+        block.text
+        for block in message.content
+        if block.type == "text"
+    ]
+    return "".join(html_parts).strip()
 
 
 def send_report(html_body, api_key, from_email, to_email, week):
     subject = (
-        f"Weekly Reddit Content Mining Report — Springer Publishing | Week of {week}"
+        f"Weekly Reddit Content Mining Report - Springer Publishing | Week of {week}"
     )
 
     payload = {
@@ -112,7 +91,7 @@ def send_report(html_body, api_key, from_email, to_email, week):
 
     try:
         with urllib.request.urlopen(req) as resp:
-            print(f"Report sent to {to_email} — status {resp.status}")
+            print(f"Report sent to {to_email} - status {resp.status}")
     except urllib.error.HTTPError as e:
         body = e.read().decode()
         print(f"ERROR {e.code}: {body}", file=sys.stderr)
