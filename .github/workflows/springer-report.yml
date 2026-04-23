@@ -28,4 +28,5 @@ jobs:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           SPRINGER_FROM: oleg.boychenko73@gmail.com
           SPRINGER_TO: oboychenko@springerpub.com
+          PYTHONIOENCODING: utf-8
         run: python springer_report.py
