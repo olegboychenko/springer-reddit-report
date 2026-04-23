@@ -29,4 +29,4 @@ jobs:
           SPRINGER_FROM: oleg.boychenko73@gmail.com
           SPRINGER_TO: oboychenko@springerpub.com
           PYTHONIOENCODING: utf-8
-        run: python springer_report.py
+        run: python -X utf8 springer_report.py
