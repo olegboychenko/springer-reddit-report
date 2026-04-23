@@ -59,7 +59,7 @@ def run_research(date_str):
     ) as stream:
         message = stream.get_final_message()
 
-     html_parts = [
+    html_parts = [
         block.text
         for block in message.content
         if block.type == "text"
@@ -69,6 +69,7 @@ def run_research(date_str):
     if html_start != -1:
         return full_text[html_start:].strip()
     return full_text.strip()
+
 
 def inject_styles(html):
     css = """<style>
@@ -86,6 +87,7 @@ a{color:#0066cc!important}
     if "<html>" in html:
         return html.replace("<html>", "<html><head>" + css + "</head>", 1)
     return css + html
+
 
 def send_report(html_body, api_key, from_email, to_email, week):
     subject = (
