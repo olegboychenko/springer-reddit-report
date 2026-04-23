@@ -59,13 +59,33 @@ def run_research(date_str):
     ) as stream:
         message = stream.get_final_message()
 
-    html_parts = [
+     html_parts = [
         block.text
         for block in message.content
         if block.type == "text"
     ]
-    return "".join(html_parts).strip()
+    full_text = "".join(html_parts)
+    html_start = full_text.find("<html")
+    if html_start != -1:
+        return full_text[html_start:].strip()
+    return full_text.strip()
 
+def inject_styles(html):
+    css = """<style>
+body{color:#1a1a1a!important;background:#ffffff!important;font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:24px}
+h1,h2{color:#00356b!important}
+h3,h4{color:#1a1a1a!important}
+p,li,td,span,div{color:#1a1a1a!important}
+th{background:#00356b!important;color:#ffffff!important;padding:8px;text-align:left}
+td{color:#1a1a1a!important;padding:8px;vertical-align:top}
+tr:nth-child(even){background:#f5f7fa}
+a{color:#0066cc!important}
+</style>"""
+    if "<head>" in html:
+        return html.replace("<head>", "<head>" + css, 1)
+    if "<html>" in html:
+        return html.replace("<html>", "<html><head>" + css + "</head>", 1)
+    return css + html
 
 def send_report(html_body, api_key, from_email, to_email, week):
     subject = (
@@ -119,7 +139,7 @@ def main():
         sys.exit(1)
 
     print(f"Report generated ({len(html_report):,} chars). Sending via SendGrid...")
-    send_report(html_report, api_key, from_email, to_email, week_str)
+    send_report(inject_styles(html_report), api_key, from_email, to_email, week_str)
 
 
 if __name__ == "__main__":
