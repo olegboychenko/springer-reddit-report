@@ -1,0 +1,31 @@
+name: Springer Weekly Reddit Report
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'  # Monday 10:00 UTC = 6:00 AM Eastern
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Run weekly report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SPRINGER_FROM: oleg.boychenko73@gmail.com
+          SPRINGER_TO: oboychenko@springerpub.com
+        run: python springer_report.py
