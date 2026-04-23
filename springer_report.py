@@ -52,7 +52,7 @@ def run_research(date_str):
     client = anthropic.Anthropic()
 
     with client.messages.stream(
-        model="claude-opus-4-7",
+        model="claude-sonnet-4-6",
         max_tokens=16000,
         tools=[{"type": "web_search_20260209", "name": "web_search"}],
         messages=[{"role": "user", "content": PROMPT.format(date=date_str)}],
