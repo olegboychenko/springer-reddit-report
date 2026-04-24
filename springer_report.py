@@ -2,6 +2,7 @@
 """Springer Publishing — Weekly Reddit Content Mining Report"""
 
 import os
+import re
 import sys
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -71,7 +72,38 @@ def run_research(date_str):
     return full_text.strip()
 
 
+DARK_BG = re.compile(
+    r'background(?:-color)?\s*:\s*'
+    r'(?:#(?:00356b|1a1a1a|222222|333333|111111|000000|[0-2][0-9a-f]{5})|navy|darkblue)',
+    re.IGNORECASE
+)
+
+
+def fix_contrast(html):
+    """Force white text on th elements and any element with a dark background."""
+    def process(m):
+        tag = m.group(0)
+        tag_name = m.group(1).lower()
+        is_th = tag_name == 'th'
+        has_dark_bg = bool(DARK_BG.search(tag))
+
+        if not is_th and not has_dark_bg:
+            return tag
+
+        # Element needs white text
+        if re.search(r'(?i)(?<![a-z-])color\s*:', tag):
+            tag = re.sub(r'(?i)(?<![a-z-])(color\s*:\s*)[^;}\'"]+', r'\g<1>#ffffff', tag)
+        elif re.search(r'(?i)style\s*=\s*"', tag):
+            tag = re.sub(r'(?i)(style\s*=\s*")', r'\1color:#ffffff;', tag)
+        else:
+            tag = tag[:-1] + ' style="color:#ffffff;">'
+        return tag
+
+    return re.sub(r'<(th|h[1-6]|div|p|span|li|td)\b[^>]*>', process, html, flags=re.IGNORECASE)
+
+
 def inject_styles(html):
+    html = fix_contrast(html)
     css = """<style>
 body{color:#1a1a1a;background:#ffffff;font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:24px}
 h1,h2{color:#00356b}
