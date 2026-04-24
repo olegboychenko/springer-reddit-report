@@ -33,19 +33,9 @@ Springer Publishing voice framing.
 6. End with: Top 3 blog ideas to prioritize, Top 3 social ideas to prioritize, \
 1 emerging trend to watch next week.
 
-CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and \
-nothing else. Start immediately with <html> — no preamble, no explanation, no \
-summary text before or after the HTML. Do not say what you found or describe the \
-report. Do not use markdown. Do not use code fences. Just output the HTML document \
-directly, beginning with <html> and ending with </html>.
-
-Use clean formatting with headings, tables for content ideas, and clear sections. \
-Inline CSS for styling is encouraged.
-
-Springer Publishing voice: supportive, modern, professional, practical, credible, \
-approachable. Active voice. Plain language. No exclamation points. No buzzwords. \
-No self-promotion. Focus on helping readers move forward in their careers, studies, \
-and licensure journeys."""
+OUTPUT: A single complete HTML document. Start with <html> and end with </html>. \
+No text before or after the HTML tags. No markdown. No code fences. No preamble. \
+No summary. No file export. Just the HTML document."""
 
 
 def run_research(date_str):
@@ -54,6 +44,7 @@ def run_research(date_str):
     with client.messages.stream(
         model="claude-sonnet-4-6",
         max_tokens=16000,
+        system="You are an HTML document generator. Your entire response must be a single valid HTML document starting with <html> and ending with </html>. Never write any text outside the HTML tags. Never describe, summarize, or explain your output. Never say you have generated or exported a file. Output only raw HTML.",
         tools=[{"type": "web_search_20260209", "name": "web_search"}],
         messages=[{"role": "user", "content": PROMPT.format(date=date_str)}],
     ) as stream:
