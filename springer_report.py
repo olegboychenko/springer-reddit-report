@@ -2,7 +2,6 @@
 """Springer Publishing — Weekly Reddit Content Mining Report"""
 
 import os
-import re
 import sys
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -37,9 +36,15 @@ nothing else. Start immediately with <html> — no preamble, no explanation, no 
 summary text before or after the HTML. Do not use markdown. Do not use code fences. \
 Begin with <html> and end with </html>.
 
+COLOR RULES — follow these exactly:
+- Dark backgrounds (navy #00356b, dark gray #333333 or similar): use white text (#ffffff).
+- White or light gray backgrounds: use dark text (#1a1a1a or #333333).
+- Never use white or light-colored text on a white or light gray background.
+- Table headers: navy background (#00356b) with white text (#ffffff).
+- Body sections and paragraphs: white background with dark text (#1a1a1a).
+
 Use clean formatting with headings, tables for content ideas, and clear sections. \
-Use only dark text on light backgrounds. Never use white or light-colored text. \
-Inline CSS for styling is encouraged.
+Inline CSS for all styling.
 
 Springer Publishing voice: supportive, modern, professional, practical, credible, \
 approachable. Active voice. Plain language. No exclamation points. No buzzwords. \
@@ -67,21 +72,14 @@ def run_research(date_str):
 
 
 def inject_styles(html):
-    # Fix white text color only — negative lookbehind excludes background-color
-    html = re.sub(
-        r'(?i)(?<![a-z-])(color\s*:\s*)(white|#fff(?:fff)?)',
-        r'\1#00356b',
-        html
-    )
     css = """<style>
-body{color:#1a1a1a!important;background:#ffffff!important;font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:24px}
-h1,h2{color:#00356b!important}
-h3,h4{color:#1a1a1a!important}
-p,li,td,span,div{color:#1a1a1a!important}
-th{background:#00356b!important;color:#ffffff!important;padding:8px;text-align:left}
-td{color:#1a1a1a!important;padding:8px;vertical-align:top}
+body{color:#1a1a1a;background:#ffffff;font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:24px}
+h1,h2{color:#00356b}
+h3,h4{color:#1a1a1a}
+th{background:#00356b;color:#ffffff;padding:8px;text-align:left}
+td{padding:8px;vertical-align:top}
 tr:nth-child(even){background:#f5f7fa}
-a{color:#0066cc!important}
+a{color:#0066cc}
 </style>"""
     if "<head>" in html:
         return html.replace("<head>", "<head>" + css, 1)
