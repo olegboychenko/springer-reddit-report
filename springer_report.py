@@ -10,66 +10,86 @@ from datetime import datetime
 
 import anthropic
 
-RESEARCH_PROMPT = """Today is {date}. Search Reddit and related sources for recent \
-discussions in r/nursepractitioner, r/FNP, r/socialwork, and r/SocialWorkStudents.
+PROMPT = """You are the Springer Publishing weekly Reddit content research agent.
 
-Run at least 8 searches covering: trending topics, exam prep, licensing issues, \
-burnout, salary, scope of practice, career transitions, and educational concerns.
+Today is {date}. Your job is to scan and analyze recent posts and discussions from \
+r/nursepractitioner, r/FNP, r/socialwork, and r/SocialWorkStudents, then produce a \
+complete weekly content mining report.
 
-After all searches, write a detailed plain-text summary of your findings: key themes, \
-specific discussions observed, and what practitioners and students are most concerned \
-about this week. Be specific."""
+Steps:
+1. Use web_search to find recent discussions, trending topics, questions, pain points, \
+and concerns in each community. Search each subreddit by name. Also search for topics \
+like exam prep, licensing, burnout, salary, scope of practice, career transitions, and \
+educational concerns. Run at least 8 searches to ensure broad coverage.
+2. Group findings into the 5 most important themes of the week.
+3. For each theme provide: theme title, why it matters now, evidence from the \
+communities (specific posts or discussion patterns observed), and audience fit \
+(FNP / Social Work / Both).
+4. For each theme generate: 1 blog article idea, 1 LinkedIn post angle, 1 short-form \
+social post idea, 1 newsletter topic.
+5. For each content idea include: working headline, core audience pain point or \
+motivation, recommended content format, reason this topic is timely, short note on \
+Springer Publishing voice framing.
+6. End with: Top 3 blog ideas to prioritize, Top 3 social ideas to prioritize, \
+1 emerging trend to watch next week.
 
-REPORT_PROMPT = """Based on these research findings, create a Springer Publishing \
-weekly Reddit content mining report:
+CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and \
+nothing else. Start immediately with <html> — no preamble, no explanation, no \
+summary text before or after the HTML. Do not use markdown. Do not use code fences. \
+Begin with <html> and end with </html>.
 
-{research}
+Use clean formatting with headings, tables for content ideas, and clear sections. \
+Inline CSS for styling is encouraged.
 
-Include:
-1. 5 most important themes. For each: title, why it matters now, community evidence, \
-audience fit (FNP / Social Work / Both).
-2. For each theme: 1 blog idea, 1 LinkedIn angle, 1 short-form social idea, \
-1 newsletter topic.
-3. For each content idea: headline, audience pain point, format, timeliness rationale, \
-Springer voice framing note.
-4. End with: Top 3 blog ideas, Top 3 social ideas, 1 emerging trend to watch.
-
-Springer voice: supportive, professional, practical, plain language, no exclamation \
-points, no buzzwords, no self-promotion.
-
-Use clean HTML with headings and tables. Continue the HTML document now."""
+Springer Publishing voice: supportive, modern, professional, practical, credible, \
+approachable. Active voice. Plain language. No exclamation points. No buzzwords. \
+No self-promotion. Focus on helping readers move forward in their careers, studies, \
+and licensure journeys."""
 
 
 def run_research(date_str):
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=600)
 
-    # Step 1: Research using web search — plain text summary output is fine here
+    # Single call with web search
     with client.messages.stream(
         model="claude-sonnet-4-6",
-        max_tokens=8000,
+        max_tokens=16000,
         tools=[{"type": "web_search_20260209", "name": "web_search"}],
-        messages=[{"role": "user", "content": RESEARCH_PROMPT.format(date=date_str)}],
+        messages=[{"role": "user", "content": PROMPT.format(date=date_str)}],
     ) as stream:
-        research_message = stream.get_final_message()
+        message = stream.get_final_message()
 
-    research_text = "".join(
-        block.text for block in research_message.content if block.type == "text"
+    full_text = "".join(
+        block.text for block in message.content if block.type == "text"
     )
 
-    # Step 2: Generate HTML — prefill forces Claude to start with <html> immediately
+    # If we got HTML, return it
+    html_start = full_text.find("<html")
+    if html_start != -1:
+        return full_text[html_start:].strip()
+
+    # If the model output a description instead of HTML, convert it with prefill
+    print("Model output description — converting to HTML...")
     prefill = "<html><head><title>Springer Publishing Weekly Reddit Report</title>"
     with client.messages.stream(
         model="claude-sonnet-4-6",
         max_tokens=16000,
         messages=[
-            {"role": "user", "content": REPORT_PROMPT.format(research=research_text)},
+            {
+                "role": "user",
+                "content": (
+                    "Convert the following content into a complete formatted HTML report "
+                    "with headings, tables, and inline CSS styling. Dark text on white "
+                    "background. Use Springer navy (#00356b) for headings.\n\n" + full_text
+                ),
+            },
             {"role": "assistant", "content": prefill},
         ],
     ) as stream:
-        report_message = stream.get_final_message()
+        format_message = stream.get_final_message()
 
     html_body = "".join(
-        block.text for block in report_message.content if block.type == "text"
+        block.text for block in format_message.content if block.type == "text"
     )
     return prefill + html_body
 
