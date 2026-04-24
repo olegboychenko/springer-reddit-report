@@ -2,6 +2,7 @@
 """Springer Publishing — Weekly Reddit Content Mining Report"""
 
 import os
+import re
 import sys
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -12,25 +13,23 @@ import anthropic
 
 PROMPT = """You are the Springer Publishing weekly Reddit content research agent.
 
-Today is {date}. Your job is to scan and analyze recent posts and discussions from \
-r/nursepractitioner, r/FNP, r/socialwork, and r/SocialWorkStudents, then produce a \
-complete weekly content mining report.
+Today is {date}. Based on your knowledge of recent discussions in r/nursepractitioner, \
+r/FNP, r/socialwork, and r/SocialWorkStudents, produce a complete weekly content \
+mining report identifying opportunities for blog articles, LinkedIn posts, newsletters, \
+and short-form social content.
 
 Steps:
-1. Use web_search to find recent discussions, trending topics, questions, pain points, \
-and concerns in each community. Search each subreddit by name. Also search for topics \
-like exam prep, licensing, burnout, salary, scope of practice, career transitions, and \
-educational concerns. Run at least 8 searches to ensure broad coverage.
-2. Group findings into the 5 most important themes of the week.
-3. For each theme provide: theme title, why it matters now, evidence from the \
-communities (specific posts or discussion patterns observed), and audience fit \
-(FNP / Social Work / Both).
-4. For each theme generate: 1 blog article idea, 1 LinkedIn post angle, 1 short-form \
+1. Identify the 5 most important themes currently active in these communities, covering \
+topics like exam prep, licensing, burnout, salary, scope of practice, career \
+transitions, and educational concerns.
+2. For each theme provide: theme title, why it matters now, evidence from the \
+communities, and audience fit (FNP / Social Work / Both).
+3. For each theme generate: 1 blog article idea, 1 LinkedIn post angle, 1 short-form \
 social post idea, 1 newsletter topic.
-5. For each content idea include: working headline, core audience pain point or \
+4. For each content idea include: working headline, core audience pain point or \
 motivation, recommended content format, reason this topic is timely, short note on \
 Springer Publishing voice framing.
-6. End with: Top 3 blog ideas to prioritize, Top 3 social ideas to prioritize, \
+5. End with: Top 3 blog ideas to prioritize, Top 3 social ideas to prioritize, \
 1 emerging trend to watch next week.
 
 CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and \
@@ -39,6 +38,7 @@ summary text before or after the HTML. Do not use markdown. Do not use code fenc
 Begin with <html> and end with </html>.
 
 Use clean formatting with headings, tables for content ideas, and clear sections. \
+Use only dark text on light backgrounds. Never use white or light-colored text. \
 Inline CSS for styling is encouraged.
 
 Springer Publishing voice: supportive, modern, professional, practical, credible, \
@@ -48,13 +48,11 @@ and licensure journeys."""
 
 
 def run_research(date_str):
-    client = anthropic.Anthropic(timeout=600)
+    client = anthropic.Anthropic()
 
-    # Single call with web search
     with client.messages.stream(
         model="claude-sonnet-4-6",
         max_tokens=16000,
-        tools=[{"type": "web_search_20260209", "name": "web_search"}],
         messages=[{"role": "user", "content": PROMPT.format(date=date_str)}],
     ) as stream:
         message = stream.get_final_message()
@@ -62,39 +60,19 @@ def run_research(date_str):
     full_text = "".join(
         block.text for block in message.content if block.type == "text"
     )
-
-    # If we got HTML, return it
     html_start = full_text.find("<html")
     if html_start != -1:
         return full_text[html_start:].strip()
-
-    # If the model output a description instead of HTML, convert it with prefill
-    print("Model output description — converting to HTML...")
-    prefill = "<html><head><title>Springer Publishing Weekly Reddit Report</title>"
-    with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=16000,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    "Convert the following content into a complete formatted HTML report "
-                    "with headings, tables, and inline CSS styling. Dark text on white "
-                    "background. Use Springer navy (#00356b) for headings.\n\n" + full_text
-                ),
-            },
-            {"role": "assistant", "content": prefill},
-        ],
-    ) as stream:
-        format_message = stream.get_final_message()
-
-    html_body = "".join(
-        block.text for block in format_message.content if block.type == "text"
-    )
-    return prefill + html_body
+    return full_text.strip()
 
 
 def inject_styles(html):
+    # Replace inline white/light text with dark blue so it renders in Outlook
+    html = re.sub(
+        r'(?i)(color\s*:\s*)(white|#fff(?:fff)?)',
+        r'\1#00356b',
+        html
+    )
     css = """<style>
 body{color:#1a1a1a!important;background:#ffffff!important;font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:24px}
 h1,h2{color:#00356b!important}
