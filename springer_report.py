@@ -67,9 +67,9 @@ def run_research(date_str):
 
 
 def inject_styles(html):
-    # Replace inline white/light text with dark blue so it renders in Outlook
+    # Fix white text color only — negative lookbehind excludes background-color
     html = re.sub(
-        r'(?i)(color\s*:\s*)(white|#fff(?:fff)?)',
+        r'(?i)(?<![a-z-])(color\s*:\s*)(white|#fff(?:fff)?)',
         r'\1#00356b',
         html
     )
