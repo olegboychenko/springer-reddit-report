@@ -25,7 +25,7 @@ jobs:
       - name: Run weekly report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           SPRINGER_FROM: oleg.boychenko73@gmail.com
           SPRINGER_TO: oboychenko@springerpub.com
           PYTHONIOENCODING: utf-8
