@@ -95,14 +95,14 @@ def send_report(html_body, api_key, from_email, to_email, week):
     )
 
     payload = {
-        "personalizations": [{"to": [{"email": to_email}]}],
-        "from": {"email": from_email},
+        "from": from_email,
+        "to": [to_email],
         "subject": subject,
-        "content": [{"type": "text/html", "value": html_body}],
+        "html": html_body,
     }
 
     req = urllib.request.Request(
-        "https://api.sendgrid.com/v3/mail/send",
+        "https://api.resend.com/emails",
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -121,12 +121,12 @@ def send_report(html_body, api_key, from_email, to_email, week):
 
 
 def main():
-    api_key = os.environ.get("SENDGRID_API_KEY")
+    api_key = os.environ.get("RESEND_API_KEY")
     from_email = os.environ.get("SPRINGER_FROM", "oleg.boychenko73@gmail.com")
     to_email = os.environ.get("SPRINGER_TO", "oboychenko@springerpub.com")
 
     if not api_key:
-        print("ERROR: SENDGRID_API_KEY not set", file=sys.stderr)
+        print("ERROR: RESEND_API_KEY not set", file=sys.stderr)
         sys.exit(1)
 
     now = datetime.now()
@@ -140,7 +140,7 @@ def main():
         print("ERROR: Empty report generated", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Report generated ({len(html_report):,} chars). Sending via SendGrid...")
+    print(f"Report generated ({len(html_report):,} chars). Sending via Resend...")
     send_report(inject_styles(html_report), api_key, from_email, to_email, week_str)
 
 
