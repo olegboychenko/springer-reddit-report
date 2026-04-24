@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Springer Publishing — Weekly Reddit Content Mining Report"""
 
-import json
 import os
 import sys
-import urllib.request
-import urllib.error
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from datetime import datetime
 
 import anthropic
@@ -89,44 +89,30 @@ a{color:#0066cc!important}
     return css + html
 
 
-def send_report(html_body, api_key, from_email, to_email, week):
+def send_report(html_body, from_email, app_password, to_email, week):
     subject = (
         f"Weekly Reddit Content Mining Report - Springer Publishing | Week of {week}"
     )
 
-    payload = {
-        "from": from_email,
-        "to": [to_email],
-        "subject": subject,
-        "html": html_body,
-    }
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg.attach(MIMEText(html_body, "html"))
 
-    req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(req) as resp:
-            print(f"Report sent to {to_email} - status {resp.status}")
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        print(f"ERROR {e.code}: {body}", file=sys.stderr)
-        sys.exit(1)
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(from_email, app_password)
+        server.sendmail(from_email, to_email, msg.as_string())
+        print(f"Report sent to {to_email}")
 
 
 def main():
-    api_key = os.environ.get("RESEND_API_KEY")
+    app_password = os.environ.get("GMAIL_APP_PASSWORD")
     from_email = os.environ.get("SPRINGER_FROM", "oleg.boychenko73@gmail.com")
     to_email = os.environ.get("SPRINGER_TO", "oboychenko@springerpub.com")
 
-    if not api_key:
-        print("ERROR: RESEND_API_KEY not set", file=sys.stderr)
+    if not app_password:
+        print("ERROR: GMAIL_APP_PASSWORD not set", file=sys.stderr)
         sys.exit(1)
 
     now = datetime.now()
@@ -140,8 +126,8 @@ def main():
         print("ERROR: Empty report generated", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Report generated ({len(html_report):,} chars). Sending via Resend...")
-    send_report(inject_styles(html_report), api_key, from_email, to_email, week_str)
+    print(f"Report generated ({len(html_report):,} chars). Sending via Gmail...")
+    send_report(inject_styles(html_report), from_email, app_password, to_email, week_str)
 
 
 if __name__ == "__main__":
