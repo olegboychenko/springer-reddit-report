@@ -3,27 +3,28 @@
 
 import os
 import sys
-import subprocess
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
 
+import anthropic
+
 PROMPT = """You are the Springer Publishing weekly Reddit content research agent.
 
-Today is {date}. Scan and analyze recent posts and discussions from r/nursepractitioner, \
-r/FNP, r/socialwork, and r/SocialWorkStudents.
-
-Your job: identify content opportunities for blog articles, LinkedIn posts, newsletters, \
-and short-form social content.
+Today is {date}. Your job is to scan and analyze recent posts and discussions from \
+r/nursepractitioner, r/FNP, r/socialwork, and r/SocialWorkStudents, then produce a \
+complete weekly content mining report.
 
 Steps:
-1. Use WebSearch to find recent discussions, trending topics, questions, pain points, \
-and concerns in each community. Search for topics like exam prep, licensing, burnout, \
-salary, scope of practice, career transitions, and educational concerns.
+1. Use web_search to find recent discussions, trending topics, questions, pain points, \
+and concerns in each community. Search each subreddit by name. Also search for topics \
+like exam prep, licensing, burnout, salary, scope of practice, career transitions, and \
+educational concerns. Run at least 8 searches to ensure broad coverage.
 2. Group findings into the 5 most important themes of the week.
 3. For each theme provide: theme title, why it matters now, evidence from the \
-communities, and audience fit (FNP / Social Work / Both).
+communities (specific posts or discussion patterns observed), and audience fit \
+(FNP / Social Work / Both).
 4. For each theme generate: 1 blog article idea, 1 LinkedIn post angle, 1 short-form \
 social post idea, 1 newsletter topic.
 5. For each content idea include: working headline, core audience pain point or \
@@ -32,30 +33,42 @@ Springer Publishing voice framing.
 6. End with: Top 3 blog ideas to prioritize, Top 3 social ideas to prioritize, \
 1 emerging trend to watch next week.
 
-OUTPUT FORMAT: Return the full report as a single self-contained HTML document. \
+CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and \
+nothing else. Start immediately with <html> — no preamble, no explanation, no \
+summary text before or after the HTML. Do not say what you found or describe the \
+report. Do not use markdown. Do not use code fences. Just output the HTML document \
+directly, beginning with <html> and ending with </html>.
+
 Use clean formatting with headings, tables for content ideas, and clear sections. \
-No markdown — pure HTML only. Do not include code fences. Start directly with <html>.
+Inline CSS for styling is encouraged.
 
 Springer Publishing voice: supportive, modern, professional, practical, credible, \
 approachable. Active voice. Plain language. No exclamation points. No buzzwords. \
-No self-promotion."""
+No self-promotion. Focus on helping readers move forward in their careers, studies, \
+and licensure journeys."""
 
 
 def run_research(date_str):
-    result = subprocess.run(
-        ["claude", "--dangerously-skip-permissions", "-p", PROMPT.format(date=date_str)],
-        capture_output=True,
-        text=True,
-        timeout=1200,
-    )
-    if result.returncode != 0:
-        print(f"Claude error: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
-    output = result.stdout.strip()
-    html_start = output.find("<html")
+    client = anthropic.Anthropic()
+
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=16000,
+        tools=[{"type": "web_search_20260209", "name": "web_search"}],
+        messages=[{"role": "user", "content": PROMPT.format(date=date_str)}],
+    ) as stream:
+        message = stream.get_final_message()
+
+    html_parts = [
+        block.text
+        for block in message.content
+        if block.type == "text"
+    ]
+    full_text = "".join(html_parts)
+    html_start = full_text.find("<html")
     if html_start != -1:
-        return output[html_start:]
-    return output
+        return full_text[html_start:].strip()
+    return full_text.strip()
 
 
 def inject_styles(html):
