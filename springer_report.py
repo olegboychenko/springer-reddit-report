@@ -124,7 +124,7 @@ a{color:#0066cc}
     return css + html
 
 
-def send_report(html_body, from_email, app_password, to_email, week):
+def send_report(html_body, from_email, app_password, to_email, cc_email, week):
     subject = (
         f"Weekly Reddit Content Mining Report - Springer Publishing | Week of {week}"
     )
@@ -132,18 +132,20 @@ def send_report(html_body, from_email, app_password, to_email, week):
     msg["Subject"] = subject
     msg["From"] = from_email
     msg["To"] = to_email
+    msg["Cc"] = cc_email
     msg.attach(MIMEText(html_body, "html"))
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(from_email, app_password)
-        server.sendmail(from_email, to_email, msg.as_string())
-        print(f"Report sent to {to_email}")
+        server.sendmail(from_email, [to_email, cc_email], msg.as_string())
+        print(f"Report sent to {to_email}, {cc_email}")
 
 
 def main():
     app_password = os.environ.get("GMAIL_APP_PASSWORD")
     from_email = os.environ.get("SPRINGER_FROM", "oleg.boychenko73@gmail.com")
     to_email = os.environ.get("SPRINGER_TO", "oboychenko@springerpub.com")
+    cc_email = "abennie@springerpub.com"
 
     if not app_password:
         print("ERROR: GMAIL_APP_PASSWORD not set", file=sys.stderr)
@@ -161,7 +163,7 @@ def main():
         sys.exit(1)
 
     print(f"Report generated ({len(html_report):,} chars). Sending via Gmail...")
-    send_report(inject_styles(html_report), from_email, app_password, to_email, week_str)
+    send_report(inject_styles(html_report), from_email, app_password, to_email, cc_email, week_str)
 
 
 if __name__ == "__main__":
