@@ -1,27 +1,15 @@
 #!/usr/bin/env python3
 """Hale's Medications & Mothers' Milk — Weekly Reddit Intelligence Report"""
 
-import json
 import os
 import re
 import sys
-import time
 import smtplib
-import urllib.request
-import urllib.error
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
 
 import anthropic
-
-CORE_SUBREDDITS = [
-    "breastfeeding",
-    "HumanForMula",
-    "beyondthebump",
-    "NewParents",
-    "lactation",
-]
 
 ROTATING_SUBREDDITS = {
     1: "pharmacy",
@@ -37,71 +25,44 @@ def get_rotating_subreddit():
     return ROTATING_SUBREDDITS.get(week_of_month, "Mommit")
 
 
-def fetch_posts(subreddit_name, days=7, limit=100):
-    cutoff = time.time() - days * 24 * 3600
-    url = f"https://www.reddit.com/r/{subreddit_name}/new.json?limit={limit}"
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "HalesReportBot/1.0 (weekly content research)"},
-    )
-    posts = []
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
-        for child in data["data"]["children"]:
-            p = child["data"]
-            if p["created_utc"] < cutoff:
-                continue
-            entry = f"[{p['score']}↑ {p['num_comments']} comments] {p['title']}"
-            if p.get("selftext"):
-                entry += f"\n{p['selftext'][:400]}"
-            posts.append(entry)
-    except Exception as e:
-        print(f"Warning: could not fetch r/{subreddit_name}: {e}", file=sys.stderr)
-    return posts
+RESEARCH_PROMPT = """Today is {date}. Search Reddit for discussions from the past 7 days in these communities: \
+r/breastfeeding, r/HumanForMula, r/beyondthebump, r/NewParents, r/lactation, and r/{rotating}.
 
+Run exactly 5 searches — no more:
+1. Recent posts in r/breastfeeding and r/lactation this week
+2. Recent posts in r/HumanForMula and r/beyondthebump this week
+3. Recent posts in r/NewParents about feeding and medication this week
+4. Recent posts in r/{rotating} this week
+5. Reddit breastfeeding medication safety questions this week
 
-def build_context():
-    rotating = get_rotating_subreddit()
-    all_subreddits = CORE_SUBREDDITS + [rotating]
+After all searches are done, output ONLY a compact bullet-point summary. No HTML. No prose. Just:
+• Subreddit name, then bullet points of topics, questions, and concerns seen
+• Include specific post titles or medication names when found
+• Keep the entire output under 700 words"""
 
-    sections = []
-    for name in all_subreddits:
-        posts = fetch_posts(name)
-        label = f"r/{name}" + (" [rotating this week]" if name == rotating else "")
-        if posts:
-            sections.append(
-                f"### {label} ({len(posts)} posts this week)\n" + "\n".join(posts[:30])
-            )
-        else:
-            sections.append(f"### {label}\n(no posts retrieved)")
-        time.sleep(1)  # stay within Reddit's rate limit
+REPORT_PROMPT = """You are the Hale's Medications & Mothers' Milk weekly Reddit intelligence analyst.
 
-    return "\n\n".join(sections), rotating
+Today is {date}. Here is research gathered from Reddit communities this week:
 
+--- RESEARCH DATA ---
+{research}
+--- END RESEARCH DATA ---
 
-PROMPT = """You are the Hale's Medications & Mothers' Milk weekly Reddit intelligence analyst.
-
-Today is {date}. Below are REAL Reddit posts from the past 7 days across lactation and new-parent communities. Analyze them and produce the weekly intelligence report.
-
---- LIVE REDDIT DATA ---
-{reddit_context}
---- END REDDIT DATA ---
-
-Based on the posts above, produce a complete 7-section HTML report:
+Produce a complete 7-section report. Continue the HTML document started below.
 
 SECTION 1 — EXECUTIVE SUMMARY
-One paragraph: what this week's data tells us about the lactation/medication-safety space. Which communities were most active? What overarching concerns dominated?
+One paragraph: what this week's data tells us about the lactation/medication-safety space. \
+Which communities were most active? What overarching concerns dominated?
 
 SECTION 2 — TOP 5 THEMES OF THE WEEK
 For each theme:
 - Theme title
-- Why it matters now (based on the actual posts above)
-- Evidence (reference specific post titles or discussion patterns from the data)
+- Why it matters now (based on the research above)
+- Evidence (reference specific topics or discussion patterns from the data)
 - Audience fit: Clinicians / Patients / Both
 
 SECTION 3 — CONTENT OPPORTUNITIES (table)
-For each theme, one row per content type with columns:
+For each theme, rows with columns:
 Content Type | Working Headline | Audience Pain Point | Format | Timeliness Note | Hale's Voice Framing
 Content types per theme: Blog Article, LinkedIn Post, Short-Form Social, Newsletter Topic
 
@@ -111,9 +72,7 @@ SECTION 4 — COMMUNITY SIGNALS
 - Gaps in available resources (what people could not find answers to)
 
 SECTION 5 — CLINICIAN VS. PATIENT LENS
-Split the week's key discussion themes into two columns:
-- What clinicians and HCPs were discussing
-- What patients and new parents were discussing
+Two columns: what clinicians/HCPs were discussing vs. what patients/new parents were discussing
 
 SECTION 6 — PRIORITIZATION
 - Top 3 blog ideas to act on this week (with brief rationale)
@@ -121,39 +80,53 @@ SECTION 6 — PRIORITIZATION
 - 1 emerging topic to monitor next week
 
 SECTION 7 — ROTATING COMMUNITY SPOTLIGHT
-This week's rotating subreddit: r/{rotating_subreddit}
-What did this community contribute that the core subreddits did not? Any unique angles, terminology, or concerns?
-
-CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and nothing else. Start immediately with <html> — no preamble, no explanation, no summary text before or after the HTML. Do not describe the report. Do not use markdown. Do not use code fences. Output the HTML document directly, beginning with <html> and ending with </html>.
+This week's rotating subreddit: r/{rotating}
+What did this community contribute that the core subreddits did not?
 
 Use clean formatting with headings, tables for content ideas, and clear sections. Inline CSS for styling is encouraged.
 
-Hale's voice: evidence-based, reassuring, precise, practical. Written for both clinicians who need accuracy and new parents who need clarity. No exclamation points. No buzzwords. Active voice. Focus on medication safety, lactation science, and clinical decision support."""
+Hale's voice: evidence-based, reassuring, precise, practical. Written for both clinicians who need \
+accuracy and new parents who need clarity. No exclamation points. No buzzwords. Active voice."""
 
 
-def run_research(date_str, reddit_context, rotating_subreddit):
+def run_research(date_str, rotating):
     client = anthropic.Anthropic()
+
+    print("Step 1: Searching Reddit...")
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=3000,
+        tools=[{"type": "web_search_20260209", "name": "web_search"}],
+        messages=[{"role": "user", "content": RESEARCH_PROMPT.format(date=date_str, rotating=rotating)}],
+    ) as stream:
+        research_msg = stream.get_final_message()
+
+    research_text = "".join(
+        block.text for block in research_msg.content if block.type == "text"
+    )
+    print(f"Step 1 done ({len(research_text)} chars of research). Generating report...")
+
     with client.messages.stream(
         model="claude-sonnet-4-6",
         max_tokens=16000,
-        messages=[{
-            "role": "user",
-            "content": PROMPT.format(
-                date=date_str,
-                reddit_context=reddit_context,
-                rotating_subreddit=rotating_subreddit,
-            ),
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": REPORT_PROMPT.format(
+                    date=date_str,
+                    research=research_text,
+                    rotating=rotating,
+                ),
+            },
+            {"role": "assistant", "content": "<html><head>"},
+        ],
     ) as stream:
-        message = stream.get_final_message()
+        report_msg = stream.get_final_message()
 
-    full_text = "".join(
-        block.text for block in message.content if block.type == "text"
+    html_body = "".join(
+        block.text for block in report_msg.content if block.type == "text"
     )
-    html_start = full_text.find("<html")
-    if html_start != -1:
-        return full_text[html_start:].strip()
-    return full_text.strip()
+    return "<html><head>" + html_body
 
 
 DARK_BG = re.compile(
@@ -227,14 +200,11 @@ def main():
     now = datetime.now()
     date_str = now.strftime("%A, %B %d, %Y")
     week_str = now.strftime("%B %d, %Y")
+    rotating = get_rotating_subreddit()
 
-    print(f"Running Hale's research for week of {week_str}...")
-    print("Fetching live Reddit posts...")
-    reddit_context, rotating = build_context()
-    print(f"Fetched Reddit data. Rotating subreddit this week: r/{rotating}")
-    print("Running analysis...")
+    print(f"Running Hale's research for week of {week_str} (rotating: r/{rotating})...")
 
-    html_report = run_research(date_str, reddit_context, rotating)
+    html_report = run_research(date_str, rotating)
 
     if not html_report:
         print("ERROR: Empty report generated", file=sys.stderr)
