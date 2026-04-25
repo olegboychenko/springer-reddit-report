@@ -1,0 +1,32 @@
+name: Hale's Weekly Reddit Report
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'  # Monday 10:00 UTC = 6:00 AM Eastern
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Run Hale's weekly report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SPRINGER_FROM: oleg.boychenko73@gmail.com
+          HALES_TO: oboychenko@springerpub.com
+          PYTHONIOENCODING: utf-8
+        run: python -X utf8 hales_report.py
