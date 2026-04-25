@@ -86,7 +86,12 @@ What did this community contribute that the core subreddits did not?
 Use clean formatting with headings, tables for content ideas, and clear sections. Inline CSS for styling is encouraged.
 
 Hale's voice: evidence-based, reassuring, precise, practical. Written for both clinicians who need \
-accuracy and new parents who need clarity. No exclamation points. No buzzwords. Active voice."""
+accuracy and new parents who need clarity. No exclamation points. No buzzwords. Active voice.
+
+CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and nothing else. \
+Start immediately with <html> — no preamble, no explanation, no text before or after the HTML. \
+Do not use markdown. Do not use code fences. Output the HTML document directly, \
+beginning with <html> and ending with </html>."""
 
 
 def run_research(date_str, rotating):
@@ -118,15 +123,17 @@ def run_research(date_str, rotating):
                     rotating=rotating,
                 ),
             },
-            {"role": "assistant", "content": "<html><head>"},
         ],
     ) as stream:
         report_msg = stream.get_final_message()
 
-    html_body = "".join(
+    full_text = "".join(
         block.text for block in report_msg.content if block.type == "text"
     )
-    return "<html><head>" + html_body
+    html_start = full_text.find("<html")
+    if html_start != -1:
+        return full_text[html_start:].strip()
+    return full_text.strip()
 
 
 DARK_BG = re.compile(
