@@ -13,15 +13,19 @@ import anthropic
 
 PROMPT = """You are the Springer Publishing weekly Reddit content research agent.
 
-Today is {date}. Based on your knowledge of recent discussions in r/nursepractitioner, \
-r/FNP, r/socialwork, and r/SocialWorkStudents, produce a complete weekly content \
+Today is {date}. Scan the top 20+ posts from the past 7 days in r/nursepractitioner, \
+r/FNP, r/socialwork, and r/SocialWorkStudents to produce a complete weekly content \
 mining report identifying opportunities for blog articles, LinkedIn posts, newsletters, \
 and short-form social content.
+
+Your job is to analyze posts and comments to identify recurring questions, frustrations \
+or pain points, career concerns, exam, licensing, and education-related confusion \
+workplace trends, and emotionally resonant topics gaining traction.
 
 Steps:
 1. Identify the 5 most important themes currently active in these communities, covering \
 topics like exam prep, licensing, burnout, salary, scope of practice, career \
-transitions, and educational concerns.
+transitions, clinical readiness, and educational concerns.
 2. For each theme provide: theme title, why it matters now, evidence from the \
 communities, and audience fit (FNP / Social Work / Both).
 3. For each theme generate: 1 blog article idea, 1 LinkedIn post angle, 1 short-form \
