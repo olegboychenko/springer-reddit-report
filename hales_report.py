@@ -19,7 +19,7 @@ import anthropic
 CORE_SUBREDDITS = [
     "breastfeeding",
     "beyondthebump",
-    "HumanForMula",
+    "FormulaFeeders",
     "NewParents",
     "lactation",
 ]
@@ -101,6 +101,8 @@ API — these are actual post titles and excerpts from the last 7 days:
 --- END LIVE REDDIT DATA ---
 
 Produce a complete 7-section report as one HTML document.
+
+At the top of the document, before Section 1, include a metadata block with: Report Date, Data Window, Subreddits Monitored, and Total Posts Analyzed. Style this block with a white or very light grey background (#f5f7fa) and BLACK text (#1a1a1a) only — no dark backgrounds, no white text on this block.
 
 SECTION 1 — EXECUTIVE SUMMARY
 One paragraph: what this week's data tells us about the lactation/medication-safety space. \
