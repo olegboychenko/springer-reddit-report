@@ -41,7 +41,7 @@ def get_rotating_subreddit():
     return ROTATING_SUBREDDITS.get(week_of_month, "Mommit")
 
 
-def fetch_subreddit(subreddit, after_ts, before_ts, limit=50):
+def fetch_subreddit(subreddit, after_ts, before_ts, limit=100):
     params = urllib.parse.urlencode({
         "subreddit": subreddit,
         "after": int(after_ts),
@@ -86,7 +86,7 @@ def format_posts(all_posts):
     lines = []
     for sub, posts in all_posts.items():
         lines.append(f"\nr/{sub} ({len(posts)} posts, last 7 days):")
-        for p in posts[:20]:
+        for p in posts[:35]:
             score = p.get("score", 0)
             title = p.get("title", "").strip()
             comments = p.get("num_comments", 0)
