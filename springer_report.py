@@ -18,7 +18,8 @@ import anthropic
 
 CORE_SUBREDDITS = [
     "nursepractitioner",
-    "FNP",
+    "APRN",
+    "NursingStudents",
     "socialwork",
     "SocialWorkStudents",
 ]
@@ -81,7 +82,7 @@ REPORT_PROMPT = """You are the Springer Publishing weekly Reddit content researc
 
 Today is {date}. Below is REAL data fetched directly from Reddit via the Arctic Shift \
 archive API — these are actual post titles and excerpts from the last 7 days from \
-r/nursepractitioner, r/FNP, r/socialwork, and r/SocialWorkStudents:
+r/nursepractitioner, r/APRN, r/NursingStudents, r/socialwork, and r/SocialWorkStudents:
 
 --- LIVE REDDIT DATA (last 7 days) ---
 {research}
