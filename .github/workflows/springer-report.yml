@@ -2,7 +2,7 @@ name: Springer Weekly Reddit Report
 
 on:
   schedule:
-    - cron: '0 10 * * 1'
+    - cron: '30 9 * * 1'
   workflow_dispatch:
 
 jobs:
