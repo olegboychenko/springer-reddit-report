@@ -28,5 +28,6 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           SPRINGER_FROM: oleg.boychenko73@gmail.com
           HALES_TO: oboychenko@springerpub.com
+          HALES_CC: vgarcia@springerpub.com
           PYTHONIOENCODING: utf-8
         run: python -X utf8 hales_report.py
