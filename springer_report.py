@@ -57,7 +57,13 @@ def collect_posts():
     for sub in CORE_SUBREDDITS:
         posts = fetch_subreddit(sub, after_ts, before_ts)
         all_posts[sub] = posts
-        print(f"  r/{sub}: {len(posts)} posts")
+        if posts:
+            dates = [p.get("created_utc", 0) for p in posts]
+            oldest = datetime.fromtimestamp(min(dates), timezone.utc).strftime("%b %d")
+            newest = datetime.fromtimestamp(max(dates), timezone.utc).strftime("%b %d")
+            print(f"  r/{sub}: {len(posts)} posts ({oldest} – {newest})")
+        else:
+            print(f"  r/{sub}: 0 posts")
         time.sleep(0.5)
 
     return all_posts
