@@ -25,20 +25,18 @@ def get_rotating_subreddit():
     return ROTATING_SUBREDDITS.get(week_of_month, "Mommit")
 
 
-RESEARCH_PROMPT = """Today is {date}. Search Reddit for discussions from the past 7 days in these communities: \
-r/breastfeeding, r/HumanForMula, r/beyondthebump, r/NewParents, r/lactation, and r/{rotating}.
+RESEARCH_PROMPT = """Today is {date}. Search for recent Reddit discussions about breastfeeding, \
+lactation, and medication safety. Run exactly 5 searches using these queries:
 
-Run exactly 5 searches — no more:
-1. Recent posts in r/breastfeeding and r/lactation this week
-2. Recent posts in r/HumanForMula and r/beyondthebump this week
-3. Recent posts in r/NewParents about feeding and medication this week
-4. Recent posts in r/{rotating} this week
-5. Reddit breastfeeding medication safety questions this week
+1. site:reddit.com/r/breastfeeding medication breastfeeding safe 2026
+2. site:reddit.com/r/beyondthebump OR site:reddit.com/r/HumanForMula breastfeeding 2026
+3. site:reddit.com/r/NewParents OR site:reddit.com/r/lactation breastfeeding medication 2026
+4. site:reddit.com/r/{rotating} breastfeeding OR lactation 2026
+5. reddit breastfeeding antidepressant OR antibiotic OR ibuprofen safe 2026
 
-After all searches are done, output ONLY a compact bullet-point summary. No HTML. No prose. Just:
-• Subreddit name, then bullet points of topics, questions, and concerns seen
-• Include specific post titles or medication names when found
-• Keep the entire output under 700 words"""
+After all 5 searches, list what you found. For each subreddit, bullet-point the specific post titles, \
+questions asked, and medications mentioned. Include exact post titles when visible. \
+No HTML. No prose. Plain bullets only. Under 800 words total."""
 
 REPORT_PROMPT = """You are the Hale's Medications & Mothers' Milk weekly Reddit intelligence analyst.
 
@@ -91,7 +89,12 @@ accuracy and new parents who need clarity. No exclamation points. No buzzwords. 
 CRITICAL OUTPUT RULE: Your entire response must be one complete HTML document and nothing else. \
 Start immediately with <html> — no preamble, no explanation, no text before or after the HTML. \
 Do not use markdown. Do not use code fences. Output the HTML document directly, \
-beginning with <html> and ending with </html>."""
+beginning with <html> and ending with </html>.
+
+Do not add any disclaimer, notice, or caveat about data availability or data pipelines. \
+Use whatever research data is provided and write the full report as if it were complete. \
+If specific post titles are available, use them. If not, draw on the topics and themes found \
+to generate actionable content recommendations."""
 
 
 def run_research(date_str, rotating):
