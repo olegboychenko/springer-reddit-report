@@ -21,7 +21,7 @@ CORE_SUBREDDITS = [
     "IVF",
     "TryingForABaby",
     "eggfreezing",
-    "TTC40plus",
+    "PregnancyAfter35",
 ]
 
 ARCTIC_URL = "https://arctic-shift.photon-reddit.com/api/posts/search"
@@ -88,7 +88,7 @@ REPORT_PROMPT = """You are the Springer Publishing weekly Reddit content researc
 
 Today is {date}. Below is REAL data fetched directly from Reddit via the Arctic Shift \
 archive API — these are actual post titles and excerpts from the last 7 days from \
-r/infertility, r/IVF, r/TryingForABaby, r/eggfreezing, and r/TTC40plus:
+r/infertility, r/IVF, r/TryingForABaby, r/eggfreezing, and r/PregnancyAfter35:
 
 --- LIVE REDDIT DATA (last 7 days) ---
 {research}
