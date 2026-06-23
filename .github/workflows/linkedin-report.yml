@@ -1,0 +1,33 @@
+name: Springer Weekly LinkedIn Report
+
+on:
+  # cron: '40 9 * * 1'  # enable once APIFY_ACTOR_ID is set and tested
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Run weekly report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SPRINGER_FROM: oleg.boychenko73@gmail.com
+          SPRINGER_TO: oboychenko@springerpub.com
+          SPRINGER_CC: abennie@springerpub.com
+          PYTHONIOENCODING: utf-8
+        run: python -X utf8 linkedin_report.py
