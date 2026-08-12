@@ -75,7 +75,11 @@ Steps:
 topics like exam prep, licensing, burnout, salary, scope of practice, career \
 transitions, clinical readiness, and educational concerns.
 2. For each theme provide: theme title, why it matters now, evidence from the \
-communities, and audience fit (FNP / Social Work / Both).
+communities, and audience fit (FNP / Social Work / Both). For evidence, quote reader \
+replies verbatim — the "| reply" lines — rather than summarising what a thread contained. \
+Attribute each quote to its subreddit and upvote count. A paraphrase such as "replies \
+described students nearly skipping a semester" is weaker than one sentence in the reader's \
+own words. Include at least two quoted replies per theme, alongside the post titles.
 3. For each theme generate: 1 blog article idea, 1 LinkedIn post angle, 1 short-form \
 social post idea, 1 newsletter topic.
 4. For each content idea include: working headline, core audience pain point or \
