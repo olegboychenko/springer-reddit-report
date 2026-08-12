@@ -201,9 +201,20 @@ opportunities for blog articles, LinkedIn posts, newsletters, and short-form soc
 
 At the top of the document, before any sections, include a metadata block with: \
 Report Date, Data Window, Subreddits Monitored, Total Posts Analyzed, and Total Comments \
-Analyzed. \
+Analyzed. Use these exact figures — do not recount them, estimate them, or round them: \
+Total Posts Analyzed = {post_count}, Total Comments Analyzed = {comment_count}, \
+Data Window = the 7 days ending {date}. \
 Style this block with a white or very light grey background (#f5f7fa) and BLACK \
 text (#1a1a1a) only — no dark backgrounds, no white text on this block.
+
+FACTUAL ACCURACY RULE — follow this exactly: \
+Every number anywhere in this report must come from the data block above or from the figures \
+stated in this prompt. Never estimate, extrapolate, or invent a quantity. This applies to \
+headlines and proposed copy exactly as much as to the analysis — do not write phrases like \
+"N years of community data", "thousands of posts", or any sample size you were not given. \
+The data covers exactly 7 days, not months or years. Upvote and comment counts may be cited \
+only for the specific post or reply they appear on. If a claim would need a number you cannot \
+source from the data, describe the pattern in words instead of quantifying it.
 
 Your job is to analyze posts and comments to identify recurring questions, frustrations \
 or pain points, career concerns, exam, licensing, and education-related confusion \
@@ -273,7 +284,12 @@ def run_research(date_str):
         messages=[
             {
                 "role": "user",
-                "content": REPORT_PROMPT.format(date=date_str, research=research_text),
+                "content": REPORT_PROMPT.format(
+                    date=date_str,
+                    research=research_text,
+                    post_count=total,
+                    comment_count=total_comments,
+                ),
             }
         ],
     ) as stream:
