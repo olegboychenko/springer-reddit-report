@@ -1,10 +1,134 @@
 #!/usr/bin/env python3
 """Springer Publishing — shared utilities for all report agents."""
 
+import json
 import re
 import smtplib
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+
+# --- Reddit comment fetching (shared by the three Arctic Shift reports) -------------
+
+ARCTIC_COMMENTS_URL = "https://arctic-shift.photon-reddit.com/api/comments/search"
+
+COMMENT_POSTS_PER_SUB = 5
+COMMENT_FETCH_POOL = 25   # request this many per thread...
+COMMENTS_PER_POST = 6     # ...then keep this many after filtering, best-scored first
+COMMENT_MAX_CHARS = 300
+# The busiest threads skew to "I passed!" and weekly check-in posts, where replies are
+# congratulations rather than content. Requiring some length drops those without
+# hand-maintaining a phrase blocklist.
+COMMENT_MIN_CHARS = 80
+SKIP_COMMENT_AUTHORS = {"AutoModerator"}
+SKIP_COMMENT_BODIES = {"[deleted]", "[removed]", ""}
+POSTS_RENDERED_PER_SUB = 35
+
+
+def fetch_comments(post, headers, keep=COMMENTS_PER_POST):
+    """Fetch top-level discussion for one post. Returns [] on any failure.
+
+    Over-fetches and then filters: asking for only `keep` comments means a thread whose
+    first replies are all one-liners yields almost nothing after filtering.
+    """
+    link_id = post.get("name") or (f"t3_{post['id']}" if post.get("id") else "")
+    if not link_id:
+        return []
+
+    params = urllib.parse.urlencode({"link_id": link_id, "limit": COMMENT_FETCH_POOL})
+    req = urllib.request.Request(f"{ARCTIC_COMMENTS_URL}?{params}", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read()).get("data", [])
+    except urllib.error.HTTPError as e:
+        print(f"Warning: could not fetch comments for {link_id}: {e}", file=sys.stderr)
+        return []
+    except Exception as e:
+        print(f"Warning: comments for {link_id} error: {e}", file=sys.stderr)
+        return []
+
+    comments = []
+    for c in data:
+        body = (c.get("body") or "").strip()
+        if body in SKIP_COMMENT_BODIES or c.get("author") in SKIP_COMMENT_AUTHORS:
+            continue
+        if len(body) < COMMENT_MIN_CHARS:
+            continue
+        comments.append({"score": c.get("score", 0), "body": body[:COMMENT_MAX_CHARS]})
+
+    comments.sort(key=lambda c: c["score"], reverse=True)
+    return comments[:keep]
+
+
+def pick_comment_threads(posts):
+    """Choose which threads to pull discussion from.
+
+    Stickied posts are the weekly check-in and megathread slots — high comment counts,
+    almost no content — so they are excluded outright.
+    """
+    candidates = [
+        p for p in posts
+        if p.get("num_comments", 0) > 0 and not p.get("stickied")
+    ]
+    candidates.sort(key=lambda p: p.get("num_comments", 0), reverse=True)
+    return candidates[:COMMENT_POSTS_PER_SUB]
+
+
+def attach_comments(all_posts, headers):
+    """Attach comments to the most-discussed threads in each subreddit.
+
+    Per-subreddit rather than global so one loud community can't crowd out the others.
+    """
+    total = 0
+    for sub, posts in all_posts.items():
+        targets = pick_comment_threads(posts)
+        fetched = 0
+        productive = 0
+        for post in targets:
+            post["comments"] = fetch_comments(post, headers)
+            fetched += len(post["comments"])
+            productive += 1 if post["comments"] else 0
+            time.sleep(0.4)
+        total += fetched
+        print(f"  r/{sub}: {fetched} comments from {productive}/{len(targets)} threads")
+    return total
+
+
+def select_render_posts(posts):
+    """The first N posts, plus any post carrying comments.
+
+    Threads picked for comment fetching are the highest num_comments in the whole
+    100-post window, so they routinely fall outside the first N. Without this union
+    their comments are fetched and then silently dropped before reaching the prompt.
+    """
+    keep = set(range(min(POSTS_RENDERED_PER_SUB, len(posts))))
+    keep.update(i for i, p in enumerate(posts) if p.get("comments"))
+    return [posts[i] for i in sorted(keep)]
+
+
+def format_reddit_posts(all_posts):
+    """Flatten posts and their fetched replies into the plain-text prompt block."""
+    lines = []
+    for sub, posts in all_posts.items():
+        lines.append(f"\nr/{sub} ({len(posts)} posts, last 7 days):")
+        for p in select_render_posts(posts):
+            score = p.get("score", 0)
+            title = p.get("title", "").strip()
+            comments = p.get("num_comments", 0)
+            snippet = (p.get("selftext") or "")[:200].strip()
+            lines.append(f"  [{score}up {comments} comments] {title}")
+            if snippet:
+                lines.append(f"    > {snippet}")
+            for c in p.get("comments", []):
+                lines.append(f"    | reply ({c['score']}up): {c['body']}")
+    return "\n".join(lines) if lines else "No posts retrieved."
+
+
+# --- HTML + email ------------------------------------------------------------------
 
 
 def extract_html(full_text):

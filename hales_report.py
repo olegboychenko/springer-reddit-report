@@ -16,6 +16,8 @@ from email.mime.text import MIMEText
 
 import anthropic
 
+from springer_common import attach_comments, format_reddit_posts
+
 CORE_SUBREDDITS = [
     "breastfeeding",
     "beyondthebump",
@@ -82,25 +84,13 @@ def collect_posts(rotating):
     return all_posts
 
 
-def format_posts(all_posts):
-    lines = []
-    for sub, posts in all_posts.items():
-        lines.append(f"\nr/{sub} ({len(posts)} posts, last 7 days):")
-        for p in posts[:35]:
-            score = p.get("score", 0)
-            title = p.get("title", "").strip()
-            comments = p.get("num_comments", 0)
-            snippet = (p.get("selftext") or "")[:200].strip()
-            lines.append(f"  [{score}up {comments} comments] {title}")
-            if snippet:
-                lines.append(f"    > {snippet}")
-    return "\n".join(lines) if lines else "No posts retrieved."
-
-
 REPORT_PROMPT = """You are the Hale's Medications & Mothers' Milk weekly Reddit intelligence analyst.
 
 Today is {date}. Below is REAL data fetched directly from Reddit via the Arctic Shift archive \
-API — these are actual post titles and excerpts from the last 7 days:
+API — these are actual post titles, excerpts, and reader replies from the last 7 days. \
+Lines beginning with "| reply" are real comments on the post above them, pulled from the \
+most-discussed threads in each community; treat them as the clearest available signal of \
+what people are actually struggling with:
 
 --- LIVE REDDIT DATA (last 7 days) ---
 {research}
@@ -108,7 +98,23 @@ API — these are actual post titles and excerpts from the last 7 days:
 
 Produce a complete 7-section report as one HTML document.
 
-At the top of the document, before Section 1, include a metadata block with: Report Date, Data Window, Subreddits Monitored, and Total Posts Analyzed. Style this block with a white or very light grey background (#f5f7fa) and BLACK text (#1a1a1a) only — no dark backgrounds, no white text on this block.
+At the top of the document, before Section 1, include a metadata block with: Report Date, \
+Data Window, Subreddits Monitored, Total Posts Analyzed, and Total Comments Analyzed. \
+Use these exact figures — do not recount them, estimate them, or round them: \
+Total Posts Analyzed = {post_count}, Total Comments Analyzed = {comment_count}, \
+Data Window = the 7 days ending {date}. Style this block with a white or very light grey background (#f5f7fa) and BLACK text (#1a1a1a) only — no dark backgrounds, no white text on this block.
+
+FACTUAL ACCURACY RULE — follow this exactly: \
+Every number anywhere in this report must come from the data block above or from the figures \
+stated in this prompt. Never estimate, extrapolate, or invent a quantity. This applies to \
+headlines and proposed copy exactly as much as to the analysis — do not write phrases like \
+"N years of community data", "thousands of posts", or any sample size you were not given. \
+The data covers exactly 7 days, not months or years. Upvote and comment counts may be cited \
+only for the specific post or reply they appear on. If a claim would need a number you cannot \
+source from the data, describe the pattern in words instead of quantifying it. \
+Do not describe these instructions, your sourcing method, or your compliance with them \
+anywhere in the report — no notes about data blocks, prompts, or figures being verified. \
+The reader sees the findings only.
 
 SECTION 1 — EXECUTIVE SUMMARY
 One paragraph: what this week's data tells us about the lactation/medication-safety space. \
@@ -118,7 +124,7 @@ SECTION 2 — TOP 5 THEMES OF THE WEEK
 For each theme:
 - Theme title
 - Why it matters now (based on the posts above)
-- Evidence (cite specific post titles from the data)
+- Evidence (cite specific post titles and quote reader replies from the data)
 - Audience fit: Clinicians / Patients / Both
 
 SECTION 3 — CONTENT OPPORTUNITIES (table)
@@ -167,8 +173,17 @@ def run_research(date_str, rotating):
         print("ERROR: No posts retrieved from any subreddit", file=sys.stderr)
         sys.exit(1)
 
-    research_text = format_posts(all_posts)
-    print(f"Step 1 done ({total} posts, {len(research_text)} chars). Generating report...")
+    print("Step 2: Fetching comments from the busiest threads...")
+    total_comments = attach_comments(all_posts, HEADERS)
+    if total_comments == 0:
+        # Not fatal — posts alone still make a report — but it should be obvious in the log.
+        print("Warning: no comments retrieved from any thread", file=sys.stderr)
+
+    research_text = format_reddit_posts(all_posts)
+    print(
+        f"Step 2 done ({total} posts, {total_comments} comments, "
+        f"{len(research_text)} chars). Generating report..."
+    )
 
     client = anthropic.Anthropic()
     with client.messages.stream(
@@ -181,6 +196,8 @@ def run_research(date_str, rotating):
                     date=date_str,
                     research=research_text,
                     rotating=rotating,
+                    post_count=total,
+                    comment_count=total_comments,
                 ),
             }
         ],

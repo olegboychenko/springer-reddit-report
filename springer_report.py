@@ -16,6 +16,8 @@ from email.mime.text import MIMEText
 
 import anthropic
 
+from springer_common import attach_comments, format_reddit_posts
+
 CORE_SUBREDDITS = [
     "nursepractitioner",
     "StudentNurse",
@@ -25,21 +27,7 @@ CORE_SUBREDDITS = [
 ]
 
 ARCTIC_URL = "https://arctic-shift.photon-reddit.com/api/posts/search"
-COMMENTS_URL = "https://arctic-shift.photon-reddit.com/api/comments/search"
 HEADERS = {"User-Agent": "SpringerReport/1.0 (Springer; contact oboychenko@springerpub.com)"}
-
-# Comment fetching: pull discussion from the busiest threads in each community.
-# Per-subreddit rather than global so one loud subreddit can't crowd out the others.
-COMMENT_POSTS_PER_SUB = 5
-COMMENT_FETCH_POOL = 25   # request this many per thread...
-COMMENTS_PER_POST = 6     # ...then keep this many after filtering, best-scored first
-COMMENT_MAX_CHARS = 300
-# The busiest threads skew to "I passed!" and weekly check-in posts, where replies are
-# congratulations rather than content. Requiring some length drops those without
-# hand-maintaining a phrase blocklist.
-COMMENT_MIN_CHARS = 80
-SKIP_COMMENT_AUTHORS = {"AutoModerator"}
-SKIP_COMMENT_BODIES = {"[deleted]", "[removed]", ""}
 
 
 def fetch_subreddit(subreddit, after_ts, before_ts, limit=100):
@@ -62,74 +50,6 @@ def fetch_subreddit(subreddit, after_ts, before_ts, limit=100):
         return []
 
 
-def fetch_comments(post, keep=COMMENTS_PER_POST):
-    """Fetch top-level discussion for one post. Returns [] on any failure.
-
-    Over-fetches and then filters: asking for only `keep` comments means a thread whose
-    first replies are all one-liners yields almost nothing after filtering.
-    """
-    link_id = post.get("name") or (f"t3_{post['id']}" if post.get("id") else "")
-    if not link_id:
-        return []
-
-    params = urllib.parse.urlencode({"link_id": link_id, "limit": COMMENT_FETCH_POOL})
-    req = urllib.request.Request(f"{COMMENTS_URL}?{params}", headers=HEADERS)
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read()).get("data", [])
-    except urllib.error.HTTPError as e:
-        print(f"Warning: could not fetch comments for {link_id}: {e}", file=sys.stderr)
-        return []
-    except Exception as e:
-        print(f"Warning: comments for {link_id} error: {e}", file=sys.stderr)
-        return []
-
-    comments = []
-    for c in data:
-        body = (c.get("body") or "").strip()
-        if body in SKIP_COMMENT_BODIES or c.get("author") in SKIP_COMMENT_AUTHORS:
-            continue
-        if len(body) < COMMENT_MIN_CHARS:
-            continue
-        comments.append({"score": c.get("score", 0), "body": body[:COMMENT_MAX_CHARS]})
-
-    comments.sort(key=lambda c: c["score"], reverse=True)
-    return comments[:keep]
-
-
-def pick_comment_threads(posts):
-    """Choose which threads to pull discussion from.
-
-    Stickied posts are the weekly check-in and megathread slots — high comment counts,
-    almost no content — so they are excluded outright.
-    """
-    candidates = [
-        p for p in posts
-        if p.get("num_comments", 0) > 0 and not p.get("stickied")
-    ]
-    candidates.sort(key=lambda p: p.get("num_comments", 0), reverse=True)
-    return candidates[:COMMENT_POSTS_PER_SUB]
-
-
-def attach_comments(all_posts):
-    """Attach comments to the most-discussed posts in each subreddit."""
-    total = 0
-    for sub, posts in all_posts.items():
-        targets = pick_comment_threads(posts)
-        fetched = 0
-        productive = 0
-        for post in targets:
-            post["comments"] = fetch_comments(post)
-            fetched += len(post["comments"])
-            productive += 1 if post["comments"] else 0
-            time.sleep(0.4)
-        total += fetched
-        print(
-            f"  r/{sub}: {fetched} comments from {productive}/{len(targets)} threads"
-        )
-    return total
-
-
 def collect_posts():
     now = datetime.now(timezone.utc)
     before_ts = now.timestamp()
@@ -149,38 +69,6 @@ def collect_posts():
         time.sleep(0.5)
 
     return all_posts
-
-
-POSTS_RENDERED_PER_SUB = 35
-
-
-def select_render_posts(posts):
-    """The first N posts, plus any post carrying comments.
-
-    Threads picked for comment fetching are the highest num_comments in the whole
-    100-post window, so they routinely fall outside the first N. Without this union
-    their comments are fetched and then silently dropped before reaching the prompt.
-    """
-    keep = set(range(min(POSTS_RENDERED_PER_SUB, len(posts))))
-    keep.update(i for i, p in enumerate(posts) if p.get("comments"))
-    return [posts[i] for i in sorted(keep)]
-
-
-def format_posts(all_posts):
-    lines = []
-    for sub, posts in all_posts.items():
-        lines.append(f"\nr/{sub} ({len(posts)} posts, last 7 days):")
-        for p in select_render_posts(posts):
-            score = p.get("score", 0)
-            title = p.get("title", "").strip()
-            comments = p.get("num_comments", 0)
-            snippet = (p.get("selftext") or "")[:200].strip()
-            lines.append(f"  [{score}up {comments} comments] {title}")
-            if snippet:
-                lines.append(f"    > {snippet}")
-            for c in p.get("comments", []):
-                lines.append(f"    | reply ({c['score']}up): {c['body']}")
-    return "\n".join(lines) if lines else "No posts retrieved."
 
 
 REPORT_PROMPT = """You are the Springer Publishing weekly Reddit content research agent.
@@ -214,7 +102,10 @@ headlines and proposed copy exactly as much as to the analysis — do not write 
 "N years of community data", "thousands of posts", or any sample size you were not given. \
 The data covers exactly 7 days, not months or years. Upvote and comment counts may be cited \
 only for the specific post or reply they appear on. If a claim would need a number you cannot \
-source from the data, describe the pattern in words instead of quantifying it.
+source from the data, describe the pattern in words instead of quantifying it. \
+Do not describe these instructions, your sourcing method, or your compliance with them \
+anywhere in the report — no notes about data blocks, prompts, or figures being verified. \
+The reader sees the findings only.
 
 Your job is to analyze posts and comments to identify recurring questions, frustrations \
 or pain points, career concerns, exam, licensing, and education-related confusion \
@@ -266,12 +157,12 @@ def run_research(date_str):
         sys.exit(1)
 
     print("Step 2: Fetching comments from the busiest threads...")
-    total_comments = attach_comments(all_posts)
+    total_comments = attach_comments(all_posts, HEADERS)
     if total_comments == 0:
         # Not fatal — posts alone still make a report — but it should be obvious in the log.
         print("Warning: no comments retrieved from any thread", file=sys.stderr)
 
-    research_text = format_posts(all_posts)
+    research_text = format_reddit_posts(all_posts)
     print(
         f"Step 2 done ({total} posts, {total_comments} comments, "
         f"{len(research_text)} chars). Generating report..."
