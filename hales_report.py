@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
 """Hale's Medications & Mothers' Milk — Weekly Reddit Intelligence Report"""
 
-import json
 import os
-import re
 import sys
-import smtplib
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-from datetime import datetime, timedelta, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from datetime import datetime
 
 import anthropic
 
-from springer_common import attach_comments, format_reddit_posts
+from springer_common import (
+    attach_comments,
+    collect_posts,
+    extract_html,
+    format_reddit_posts,
+    inject_styles,
+    send_report,
+)
+
+ACCENT = "#005a8e"
+LINK = "#0066cc"
+
+
 
 CORE_SUBREDDITS = [
     "breastfeeding",
@@ -34,54 +37,12 @@ ROTATING_SUBREDDITS = {
     5: "Midwives",
 }
 
-ARCTIC_URL = "https://arctic-shift.photon-reddit.com/api/posts/search"
 HEADERS = {"User-Agent": "HalesReport/1.0 (Springer; contact oboychenko@springerpub.com)"}
 
 
 def get_rotating_subreddit():
     week_of_month = (datetime.now().day - 1) // 7 + 1
     return ROTATING_SUBREDDITS.get(week_of_month, "Mommit")
-
-
-def fetch_subreddit(subreddit, after_ts, before_ts, limit=100):
-    params = urllib.parse.urlencode({
-        "subreddit": subreddit,
-        "after": int(after_ts),
-        "before": int(before_ts),
-        "limit": limit,
-    })
-    req = urllib.request.Request(f"{ARCTIC_URL}?{params}", headers=HEADERS)
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read())
-            return data.get("data", [])
-    except urllib.error.HTTPError as e:
-        print(f"Warning: could not fetch r/{subreddit}: {e}", file=sys.stderr)
-        return []
-    except Exception as e:
-        print(f"Warning: r/{subreddit} error: {e}", file=sys.stderr)
-        return []
-
-
-def collect_posts(rotating):
-    now = datetime.now(timezone.utc)
-    before_ts = now.timestamp()
-    after_ts = (now - timedelta(days=7)).timestamp()
-
-    all_posts = {}
-    for sub in CORE_SUBREDDITS + [rotating]:
-        posts = fetch_subreddit(sub, after_ts, before_ts)
-        all_posts[sub] = posts
-        if posts:
-            dates = [p.get("created_utc", 0) for p in posts]
-            oldest = datetime.fromtimestamp(min(dates), timezone.utc).strftime("%b %d")
-            newest = datetime.fromtimestamp(max(dates), timezone.utc).strftime("%b %d")
-            print(f"  r/{sub}: {len(posts)} posts ({oldest} – {newest})")
-        else:
-            print(f"  r/{sub}: 0 posts")
-        time.sleep(0.5)
-
-    return all_posts
 
 
 REPORT_PROMPT = """You are the Hale's Medications & Mothers' Milk weekly Reddit intelligence analyst.
@@ -166,7 +127,7 @@ above to generate specific, actionable content recommendations."""
 
 def run_research(date_str, rotating):
     print("Step 1: Fetching posts from Arctic Shift...")
-    all_posts = collect_posts(rotating)
+    all_posts = collect_posts(CORE_SUBREDDITS + [rotating], HEADERS)
 
     total = sum(len(v) for v in all_posts.values())
     if total == 0:
@@ -187,7 +148,7 @@ def run_research(date_str, rotating):
 
     client = anthropic.Anthropic()
     with client.messages.stream(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-8",
         max_tokens=16000,
         messages=[
             {
@@ -207,68 +168,7 @@ def run_research(date_str, rotating):
     full_text = "".join(
         block.text for block in report_msg.content if block.type == "text"
     )
-    html_start = full_text.find("<html")
-    if html_start != -1:
-        return full_text[html_start:].strip()
-    return full_text.strip()
-
-
-DARK_BG = re.compile(
-    r'background(?:-color)?\s*:\s*(?:#(?:005a8e|1a1a1a|222222|333333|111111|000000|[0-2][0-9a-f]{5})|navy|darkblue)',
-    re.IGNORECASE,
-)
-
-
-def fix_contrast(html):
-    def process(m):
-        tag = m.group(0)
-        tag_name = m.group(1).lower()
-        is_th = tag_name == "th"
-        has_dark_bg = bool(DARK_BG.search(tag))
-        if not is_th and not has_dark_bg:
-            return tag
-        if re.search(r"(?i)(?<![a-z-])color\s*:", tag):
-            tag = re.sub(r"(?i)(?<![a-z-])(color\s*:\s*)[^;}'\"]+", r"\g<1>#ffffff", tag)
-        elif re.search(r'(?i)style\s*=\s*"', tag):
-            tag = re.sub(r'(?i)(style\s*=\s*")', r"\1color:#ffffff;", tag)
-        else:
-            tag = tag[:-1] + ' style="color:#ffffff;">'
-        return tag
-
-    return re.sub(r"<(th|h[1-6]|div|p|span|li|td)\b[^>]*>", process, html, flags=re.IGNORECASE)
-
-
-def inject_styles(html):
-    html = fix_contrast(html)
-    css = """<style>
-body{color:#1a1a1a;background:#ffffff;font-family:Arial,sans-serif;max-width:900px;margin:0 auto;padding:24px}
-h1,h2{color:#005a8e}
-h3,h4{color:#1a1a1a}
-th{background:#005a8e;color:#ffffff;padding:8px;text-align:left}
-td{padding:8px;vertical-align:top}
-tr:nth-child(even){background:#f5f7fa}
-a{color:#0066cc}
-</style>"""
-    if "<head>" in html:
-        return html.replace("<head>", "<head>" + css, 1)
-    if "<html>" in html:
-        return html.replace("<html>", "<html><head>" + css + "</head>", 1)
-    return css + html
-
-
-def send_report(html_body, from_email, app_password, to_email, cc_email, week):
-    subject = f"Weekly Hale's Lactation & Breastfeeding Reddit Intelligence | Week of {week}"
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = from_email
-    msg["To"] = to_email
-    if cc_email:
-        msg["Cc"] = cc_email
-    msg.attach(MIMEText(html_body, "html"))
-    recipients = [to_email] + ([cc_email] if cc_email else [])
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(from_email, app_password)
-        server.sendmail(from_email, recipients, msg.as_string())
+    return extract_html(full_text)
 
 
 def main():
@@ -295,7 +195,11 @@ def main():
         sys.exit(1)
 
     print(f"Report generated ({len(html_report):,} chars). Sending via Gmail...")
-    send_report(inject_styles(html_report), from_email, app_password, to_email, cc_email, week_str)
+    subject = f"Weekly Hale's Lactation & Breastfeeding Reddit Intelligence | Week of {week_str}"
+    send_report(
+        inject_styles(html_report, ACCENT, LINK),
+        from_email, app_password, to_email, cc_email, subject,
+    )
     print(f"Report sent to {to_email}")
 
 

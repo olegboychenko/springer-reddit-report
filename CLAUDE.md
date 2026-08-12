@@ -48,12 +48,13 @@ Paused / on hold (built and working, deliberately not on a schedule):
   This is intentional, not a bug. No Apify spend has occurred.
 
 Shared:
-- `springer_common.py` — `extract_html()`, `fix_contrast()`, `inject_styles()`, `send_report()`.
-  Imported by `youtube_report.py` and `linkedin_report.py`. `springer_report.py`,
-  `hales_report.py`, and `fertility_report.py` still carry their own local copies of these
-  helpers; that duplication is known debt, not a pattern to follow. New scripts import from
-  `springer_common.py` — do not copy-paste. Propose the layout before refactoring the three
-  scripts that still duplicate.
+- `springer_common.py` — the single home for shared logic. Reddit fetching
+  (`collect_posts()`, `fetch_subreddit()`), comment fetching (`attach_comments()`,
+  `fetch_comments()`, `pick_comment_threads()`), prompt formatting
+  (`format_reddit_posts()`, `select_render_posts()`), and output
+  (`extract_html()`, `dark_bg_pattern()`, `fix_contrast()`, `inject_styles()`,
+  `send_report()`). Every report imports from here — there are no local copies left.
+  Anything shared by two or more reports belongs in this file.
 
 New workflow files go in `.github/workflows/`, NOT the repo root — a `.yml` placed at the
 root will silently never trigger. New Python scripts go at the root next to `springer_report.py`.
@@ -64,17 +65,17 @@ root will silently never trigger. New Python scripts go at the root next to `spr
   `email`, `datetime`). The ONLY pip install is `anthropic`. Don't add `requests`, `praw`,
   Google client libs, or an Apify SDK — call the REST endpoints with `urllib`.
 - **Model call:** `client.messages.stream(model="claude-opus-4-8", max_tokens=16000, ...)`,
-  a single user message. Extract text blocks, then slice from the first `<html` onward.
-  Opus is the default for new scripts. Migration status: `fertility_report.py` is on
-  `claude-opus-4-8`; `springer_report.py`, `youtube_report.py`, `hales_report.py`, and
-  `linkedin_report.py` still call `claude-sonnet-4-6` and are pending migration.
+  a single user message. Extract text blocks with `springer_common.extract_html()`, which
+  slices from the first `<html` onward. All five reports are on `claude-opus-4-8`.
 - **Output contract:** the model must return ONE complete HTML document and nothing else —
   no markdown, no code fences, no preamble. The prompt enforces this; keep that instruction.
-- **HTML post-processing:** always run `springer_common.fix_contrast()` + `inject_styles()`
-  before sending. These guarantee the Springer palette and accessible contrast regardless of
-  model output. `springer_common.py` holds the canonical implementations — import them.
-  (`springer_report.py`, `hales_report.py`, and `fertility_report.py` still define their own
-  identical copies; keep any fix in sync across all four until they are consolidated.)
+- **HTML post-processing:** always run `springer_common.inject_styles(html, ACCENT, LINK)`
+  before sending. It calls `fix_contrast()` internally and injects the palette, guaranteeing
+  accessible contrast regardless of model output. There is exactly one implementation, in
+  `springer_common.py` — never define a local copy.
+- **Per-report accent:** each report declares `ACCENT` and `LINK` constants and passes them to
+  `inject_styles()`. The accent also derives the dark-background rule via `dark_bg_pattern()`,
+  so palette and contrast cannot drift apart. See the color rules section for the values.
 - **Source rotation:** `hales_report.py` fetches five fixed subreddits plus one that rotates by
   week of month (`ROTATING_SUBREDDITS`). This is a Hale's-only pattern, not a repo convention —
   don't copy it into other reports, and don't delete it as an anomaly.
@@ -82,6 +83,11 @@ root will silently never trigger. New Python scripts go at the root next to `spr
   and returns `[]` — one bad source must never crash the whole run. If the total result count
   across all sources is zero, exit non-zero so the run visibly fails.
 - **Time window:** rolling 7 days computed from `datetime.now(timezone.utc)`.
+- **Reddit fetching:** use `springer_common.collect_posts(subreddits, HEADERS)`. Arctic Shift
+  caps one response at 100 posts newest-first, which on busy subreddits collapses a 7-day
+  request into roughly the last day — and posts that new carry no replies. `fetch_subreddit()`
+  pages backwards through the window, bounded by `MAX_POST_PAGES` (8) so a runaway source
+  cannot spin. Comments come from `attach_comments()`; render with `format_reddit_posts()`.
 - **Encoding:** scripts run with `-X utf8` and `PYTHONIOENCODING: utf-8` in the workflow.
 
 ## Secrets & environment
@@ -122,8 +128,19 @@ Two subject-line shapes are in use. Match the one for the product line the repor
 - Dark backgrounds (navy `#00356b`, dark gray `#333333`): white text `#ffffff`.
 - White / light gray backgrounds: dark text `#1a1a1a` or `#333333`.
 - Never light text on a light background.
-- Table headers: navy `#00356b` background, white text.
+- Table headers: the report's accent as background, white text.
 - Top metadata block: light grey `#f5f7fa` background with black `#1a1a1a` text.
+
+Each product line has its own accent. These are passed to `inject_styles()` as `ACCENT` and
+`LINK`, declared at the top of each script:
+
+| Report | Accent | Link |
+|---|---|---|
+| Reddit, YouTube, LinkedIn | `#00356b` Springer navy | `#0066cc` |
+| Hale's | `#005a8e` | `#0066cc` |
+| Fertility | `#8b1a4a` | `#8b1a4a` |
+
+Do not hardcode `#00356b` as "the" brand color — it is the Springer-branded default only.
 
 ## Springer brand voice (applies to all report copy the model generates)
 

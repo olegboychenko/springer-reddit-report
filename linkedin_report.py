@@ -184,7 +184,7 @@ def run_research(date_str, token):
 
     client = anthropic.Anthropic()
     with client.messages.stream(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-8",
         max_tokens=16000,
         messages=[{"role": "user", "content": REPORT_PROMPT.format(date=date_str, research=research_text)}],
     ) as stream:
