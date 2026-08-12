@@ -30,9 +30,14 @@ HEADERS = {"User-Agent": "SpringerReport/1.0 (Springer; contact oboychenko@sprin
 
 # Comment fetching: pull discussion from the busiest threads in each community.
 # Per-subreddit rather than global so one loud subreddit can't crowd out the others.
-COMMENT_POSTS_PER_SUB = 3
-COMMENTS_PER_POST = 8
+COMMENT_POSTS_PER_SUB = 5
+COMMENT_FETCH_POOL = 25   # request this many per thread...
+COMMENTS_PER_POST = 6     # ...then keep this many after filtering, best-scored first
 COMMENT_MAX_CHARS = 300
+# The busiest threads skew to "I passed!" and weekly check-in posts, where replies are
+# congratulations rather than content. Requiring some length drops those without
+# hand-maintaining a phrase blocklist.
+COMMENT_MIN_CHARS = 80
 SKIP_COMMENT_AUTHORS = {"AutoModerator"}
 SKIP_COMMENT_BODIES = {"[deleted]", "[removed]", ""}
 
@@ -57,13 +62,17 @@ def fetch_subreddit(subreddit, after_ts, before_ts, limit=100):
         return []
 
 
-def fetch_comments(post, limit=COMMENTS_PER_POST):
-    """Fetch top-level discussion for one post. Returns [] on any failure."""
+def fetch_comments(post, keep=COMMENTS_PER_POST):
+    """Fetch top-level discussion for one post. Returns [] on any failure.
+
+    Over-fetches and then filters: asking for only `keep` comments means a thread whose
+    first replies are all one-liners yields almost nothing after filtering.
+    """
     link_id = post.get("name") or (f"t3_{post['id']}" if post.get("id") else "")
     if not link_id:
         return []
 
-    params = urllib.parse.urlencode({"link_id": link_id, "limit": limit})
+    params = urllib.parse.urlencode({"link_id": link_id, "limit": COMMENT_FETCH_POOL})
     req = urllib.request.Request(f"{COMMENTS_URL}?{params}", headers=HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
@@ -80,25 +89,44 @@ def fetch_comments(post, limit=COMMENTS_PER_POST):
         body = (c.get("body") or "").strip()
         if body in SKIP_COMMENT_BODIES or c.get("author") in SKIP_COMMENT_AUTHORS:
             continue
+        if len(body) < COMMENT_MIN_CHARS:
+            continue
         comments.append({"score": c.get("score", 0), "body": body[:COMMENT_MAX_CHARS]})
 
     comments.sort(key=lambda c: c["score"], reverse=True)
-    return comments[:limit]
+    return comments[:keep]
+
+
+def pick_comment_threads(posts):
+    """Choose which threads to pull discussion from.
+
+    Stickied posts are the weekly check-in and megathread slots — high comment counts,
+    almost no content — so they are excluded outright.
+    """
+    candidates = [
+        p for p in posts
+        if p.get("num_comments", 0) > 0 and not p.get("stickied")
+    ]
+    candidates.sort(key=lambda p: p.get("num_comments", 0), reverse=True)
+    return candidates[:COMMENT_POSTS_PER_SUB]
 
 
 def attach_comments(all_posts):
     """Attach comments to the most-discussed posts in each subreddit."""
     total = 0
     for sub, posts in all_posts.items():
-        busiest = sorted(posts, key=lambda p: p.get("num_comments", 0), reverse=True)
-        targets = [p for p in busiest if p.get("num_comments", 0) > 0][:COMMENT_POSTS_PER_SUB]
+        targets = pick_comment_threads(posts)
         fetched = 0
+        productive = 0
         for post in targets:
             post["comments"] = fetch_comments(post)
             fetched += len(post["comments"])
+            productive += 1 if post["comments"] else 0
             time.sleep(0.4)
         total += fetched
-        print(f"  r/{sub}: {fetched} comments from {len(targets)} threads")
+        print(
+            f"  r/{sub}: {fetched} comments from {productive}/{len(targets)} threads"
+        )
     return total
 
 
