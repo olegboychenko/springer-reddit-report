@@ -25,7 +25,16 @@ CORE_SUBREDDITS = [
 ]
 
 ARCTIC_URL = "https://arctic-shift.photon-reddit.com/api/posts/search"
+COMMENTS_URL = "https://arctic-shift.photon-reddit.com/api/comments/search"
 HEADERS = {"User-Agent": "SpringerReport/1.0 (Springer; contact oboychenko@springerpub.com)"}
+
+# Comment fetching: pull discussion from the busiest threads in each community.
+# Per-subreddit rather than global so one loud subreddit can't crowd out the others.
+COMMENT_POSTS_PER_SUB = 3
+COMMENTS_PER_POST = 8
+COMMENT_MAX_CHARS = 300
+SKIP_COMMENT_AUTHORS = {"AutoModerator"}
+SKIP_COMMENT_BODIES = {"[deleted]", "[removed]", ""}
 
 
 def fetch_subreddit(subreddit, after_ts, before_ts, limit=100):
@@ -46,6 +55,51 @@ def fetch_subreddit(subreddit, after_ts, before_ts, limit=100):
     except Exception as e:
         print(f"Warning: r/{subreddit} error: {e}", file=sys.stderr)
         return []
+
+
+def fetch_comments(post, limit=COMMENTS_PER_POST):
+    """Fetch top-level discussion for one post. Returns [] on any failure."""
+    link_id = post.get("name") or (f"t3_{post['id']}" if post.get("id") else "")
+    if not link_id:
+        return []
+
+    params = urllib.parse.urlencode({"link_id": link_id, "limit": limit})
+    req = urllib.request.Request(f"{COMMENTS_URL}?{params}", headers=HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read()).get("data", [])
+    except urllib.error.HTTPError as e:
+        print(f"Warning: could not fetch comments for {link_id}: {e}", file=sys.stderr)
+        return []
+    except Exception as e:
+        print(f"Warning: comments for {link_id} error: {e}", file=sys.stderr)
+        return []
+
+    comments = []
+    for c in data:
+        body = (c.get("body") or "").strip()
+        if body in SKIP_COMMENT_BODIES or c.get("author") in SKIP_COMMENT_AUTHORS:
+            continue
+        comments.append({"score": c.get("score", 0), "body": body[:COMMENT_MAX_CHARS]})
+
+    comments.sort(key=lambda c: c["score"], reverse=True)
+    return comments[:limit]
+
+
+def attach_comments(all_posts):
+    """Attach comments to the most-discussed posts in each subreddit."""
+    total = 0
+    for sub, posts in all_posts.items():
+        busiest = sorted(posts, key=lambda p: p.get("num_comments", 0), reverse=True)
+        targets = [p for p in busiest if p.get("num_comments", 0) > 0][:COMMENT_POSTS_PER_SUB]
+        fetched = 0
+        for post in targets:
+            post["comments"] = fetch_comments(post)
+            fetched += len(post["comments"])
+            time.sleep(0.4)
+        total += fetched
+        print(f"  r/{sub}: {fetched} comments from {len(targets)} threads")
+    return total
 
 
 def collect_posts():
@@ -81,14 +135,19 @@ def format_posts(all_posts):
             lines.append(f"  [{score}up {comments} comments] {title}")
             if snippet:
                 lines.append(f"    > {snippet}")
+            for c in p.get("comments", []):
+                lines.append(f"    | reply ({c['score']}up): {c['body']}")
     return "\n".join(lines) if lines else "No posts retrieved."
 
 
 REPORT_PROMPT = """You are the Springer Publishing weekly Reddit content research agent.
 
 Today is {date}. Below is REAL data fetched directly from Reddit via the Arctic Shift \
-archive API — these are actual post titles and excerpts from the last 7 days from \
-r/nursepractitioner, r/StudentNurse, r/NursingStudents, r/socialwork, and r/SocialWorkStudents:
+archive API — these are actual post titles, excerpts, and reader replies from the last 7 days \
+from r/nursepractitioner, r/StudentNurse, r/NursingStudents, r/socialwork, and \
+r/SocialWorkStudents. Lines beginning with "| reply" are real comments on the post above them, \
+pulled from the most-discussed threads in each community; treat them as the clearest available \
+signal of what people are actually struggling with:
 
 --- LIVE REDDIT DATA (last 7 days) ---
 {research}
@@ -98,7 +157,8 @@ Using the data above, produce a complete weekly content mining report identifyin
 opportunities for blog articles, LinkedIn posts, newsletters, and short-form social content.
 
 At the top of the document, before any sections, include a metadata block with: \
-Report Date, Data Window, Subreddits Monitored, and Total Posts Analyzed. \
+Report Date, Data Window, Subreddits Monitored, Total Posts Analyzed, and Total Comments \
+Analyzed. \
 Style this block with a white or very light grey background (#f5f7fa) and BLACK \
 text (#1a1a1a) only — no dark backgrounds, no white text on this block.
 
@@ -151,8 +211,17 @@ def run_research(date_str):
         print("ERROR: No posts retrieved from any subreddit", file=sys.stderr)
         sys.exit(1)
 
+    print("Step 2: Fetching comments from the busiest threads...")
+    total_comments = attach_comments(all_posts)
+    if total_comments == 0:
+        # Not fatal — posts alone still make a report — but it should be obvious in the log.
+        print("Warning: no comments retrieved from any thread", file=sys.stderr)
+
     research_text = format_posts(all_posts)
-    print(f"Step 1 done ({total} posts, {len(research_text)} chars). Generating report...")
+    print(
+        f"Step 2 done ({total} posts, {total_comments} comments, "
+        f"{len(research_text)} chars). Generating report..."
+    )
 
     client = anthropic.Anthropic()
     with client.messages.stream(
