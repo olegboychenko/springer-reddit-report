@@ -151,11 +151,26 @@ def collect_posts():
     return all_posts
 
 
+POSTS_RENDERED_PER_SUB = 35
+
+
+def select_render_posts(posts):
+    """The first N posts, plus any post carrying comments.
+
+    Threads picked for comment fetching are the highest num_comments in the whole
+    100-post window, so they routinely fall outside the first N. Without this union
+    their comments are fetched and then silently dropped before reaching the prompt.
+    """
+    keep = set(range(min(POSTS_RENDERED_PER_SUB, len(posts))))
+    keep.update(i for i, p in enumerate(posts) if p.get("comments"))
+    return [posts[i] for i in sorted(keep)]
+
+
 def format_posts(all_posts):
     lines = []
     for sub, posts in all_posts.items():
         lines.append(f"\nr/{sub} ({len(posts)} posts, last 7 days):")
-        for p in posts[:35]:
+        for p in select_render_posts(posts):
             score = p.get("score", 0)
             title = p.get("title", "").strip()
             comments = p.get("num_comments", 0)
