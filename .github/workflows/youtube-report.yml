@@ -1,8 +1,8 @@
 name: Springer Weekly YouTube Report
 
 on:
-  schedule:
-    - cron: '35 9 * * 1'
+  # schedule:
+  #   - cron: '35 9 * * 1'  # paused — re-enable to resume the weekly Monday run
   workflow_dispatch:
 
 jobs:

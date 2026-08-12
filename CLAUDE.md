@@ -32,13 +32,16 @@ renaming a workflow file creates a new entry in the Actions UI and detaches its 
 
 Live (scheduled and running — read the Reddit pair first, it is the reference implementation):
 - `.github/workflows/springer-report.yml` + `springer_report.py` — Reddit, Arctic Shift API
-- `.github/workflows/youtube-report.yml` + `youtube_report.py` — YouTube Data API v3
 - `.github/workflows/hales-report.yml` + `hales_report.py` — Reddit, Arctic Shift API
   (Hale's Medications & Mothers' Milk — lactation and breastfeeding)
 - `.github/workflows/fertility_report.yml` + `fertility_report.py` — Reddit, Arctic Shift API
   (fertility: r/infertility, r/IVF, r/TryingForABaby, r/eggfreezing, r/PCOS)
 
-On hold (built, deliberately not live):
+Paused / on hold (built and working, deliberately not on a schedule):
+- `.github/workflows/youtube-report.yml` + `youtube_report.py` — YouTube Data API v3.
+  Paused: the `schedule:` block is commented out, so no weekly run fires. The script is
+  complete and `workflow_dispatch` still works, so a manual run will produce and send a
+  report. Uncomment the cron to resume.
 - `.github/workflows/linkedin-report.yml` + `linkedin_report.py` — Apify actor (paid).
   The cron is commented out and `APIFY_ACTOR_ID` is still `TODO_REPLACE_WITH_ACTOR_ID`, so only
   `workflow_dispatch` is available and it will fail at the first API call until that ID is set.
@@ -88,7 +91,7 @@ If a new secret is needed, tell me the exact `gh secret set` command to run; don
 
 - `ANTHROPIC_API_KEY` — Claude API (all reports)
 - `GMAIL_APP_PASSWORD` — Gmail app password for SMTP send (all reports)
-- `YOUTUBE_API_KEY` — YouTube report (live)
+- `YOUTUBE_API_KEY` — YouTube report (paused; still needed for manual `workflow_dispatch` runs)
 - `APIFY_API_TOKEN` — LinkedIn report (on hold; set, but the report does not run)
 
 Non-secret env vars (fine to keep in the workflow file):
@@ -138,10 +141,10 @@ Stagger crons so jobs don't fire simultaneously. Current schedule (all UTC, all 
 | Report | Cron | Status |
 |---|---|---|
 | Reddit | `30 9 * * 1` | live |
-| YouTube | `35 9 * * 1` | live |
 | Hale's | `0 10 * * 1` | live |
 | Fertility | `0 11 * * 1` | live |
-| LinkedIn | `40 9 * * 1` | commented out — on hold |
+| YouTube | `35 9 * * 1` | commented out — paused (slot reserved) |
+| LinkedIn | `40 9 * * 1` | commented out — on hold (slot reserved) |
 
 Give a new report its own slot rather than reusing one of these. Always test via
 `workflow_dispatch` before trusting the cron.
