@@ -104,7 +104,8 @@ Non-secret env vars (fine to keep in the workflow file):
 - `SPRINGER_FROM` = oleg.boychenko73@gmail.com — sender for every report
 - `SPRINGER_TO` = oboychenko@springerpub.com / `SPRINGER_CC` = abennie@springerpub.com
   — Reddit, YouTube, LinkedIn
-- `HALES_TO` = oboychenko@springerpub.com / `HALES_CC` = vgarcia@springerpub.com — Hale's
+- `HALES_TO` = oboychenko@springerpub.com /
+  `HALES_CC` = vgarcia@springerpub.com,abennie@springerpub.com — Hale's
 - `FERTILITY_TO` = oboychenko@springerpub.com / `FERTILITY_CC` = vgarcia@springerpub.com
   — Fertility
 
@@ -115,6 +116,11 @@ Each report reads its own To/Cc pair, so a new report needs its own `<TOPIC>_TO`
 
 `smtplib.SMTP_SSL("smtp.gmail.com", 465)`, login with `SPRINGER_FROM` + `GMAIL_APP_PASSWORD`,
 multipart/alternative with an HTML part.
+
+To and Cc each accept a comma-separated list of addresses. `send_report()` keeps the list
+intact in the header and splits it for the SMTP envelope — passing the raw string as one
+recipient makes Gmail reject it as a malformed address, so add recipients by extending the
+`<TOPIC>_CC` value, never by changing how the envelope is built.
 
 Two subject-line shapes are in use. Match the one for the product line the report belongs to:
 - Springer-branded reports (Reddit, YouTube, LinkedIn):

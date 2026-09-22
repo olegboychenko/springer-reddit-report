@@ -279,8 +279,18 @@ a{{color:{link}}}
     return css + html
 
 
+def _addresses(field):
+    """Split a comma-separated To/Cc value into individual addresses."""
+    return [a.strip() for a in (field or "").split(",") if a.strip()]
+
+
 def send_report(html_body, from_email, app_password, to_email, cc_email, subject):
-    """Send an HTML report via Gmail SMTP_SSL."""
+    """Send an HTML report via Gmail SMTP_SSL.
+
+    To/Cc each accept a comma-separated list. The headers keep the list as written;
+    the envelope needs the addresses handed over one at a time, or Gmail rejects the
+    whole string as a single malformed recipient.
+    """
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = from_email
@@ -288,7 +298,7 @@ def send_report(html_body, from_email, app_password, to_email, cc_email, subject
     if cc_email:
         msg["Cc"] = cc_email
     msg.attach(MIMEText(html_body, "html"))
-    recipients = [to_email] + ([cc_email] if cc_email else [])
+    recipients = _addresses(to_email) + _addresses(cc_email)
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(from_email, app_password)
         server.sendmail(from_email, recipients, msg.as_string())
